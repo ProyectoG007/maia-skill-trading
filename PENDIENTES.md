@@ -34,10 +34,10 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 
 ## P2 — Fases F2/F3: Validación y riesgo
 
-- [ ] Backtest A/B (con y sin contexto macro/quant) sobre ≥ 12 meses: esperanza matemática y drawdown no deben degradarse.
-- [ ] Correr paper/demo (SimulatedBroker o MT5 demo) ≥ 4 semanas con ≥ 20 decisiones evaluadas.
-- [ ] Implementar en RiskManager la **regla de divergencia** (TimesFM contradice al agente con spread de cuantiles bajo → WAIT) + tests.
-- [ ] Implementar la **regla de contexto macro** (sector contrario con accuracy > 60% → sizing 50% o WAIT) + tests.
+- [x] 🐛 **Hallazgo que corrige el SPEC**: el "backtest A/B con y sin contexto macro/quant" no es viable — no existe historial de qué contexto había disponible en cada fecha pasada (Tododeia/TimesFM nunca corrieron hacia atrás). Reemplazado por: backtest técnico puro (ya existe) + validación en paper trading en vivo con las reglas de contexto activas. Ver detalle en `SPEC.md` F2 y `TradingMY_claude/pendientes.md` ítem 85.
+- [x] Implementar en el Risk Engine la **regla de divergencia** (TimesFM contradice al agente con spread de cuantiles bajo → reduce tamaño o bloquea) + tests — `TradingMY_claude/src/context/context_rules.py`, 16 tests.
+- [x] Implementar la **regla de contexto macro** (sector contrario con accuracy > 60% → reduce tamaño) + tests — mismo módulo.
+- [ ] Correr paper/demo (SimulatedBroker o MT5 demo) ≥ 4 semanas con ≥ 20 decisiones evaluadas — requiere que el sistema esté desplegado 24/7 (depende de P0: hosting).
 - [ ] Implementar `CCXTBroker` sobre `broker_base.py` (si se decide esa vía) → paper crypto.
 - [ ] Job semanal n8n: cruzar accuracy macro (Tododeia) con win rate real (TradingMY) y ajustar pesos del prompt.
 - [ ] Verificar que la suite existente de TradingMY (119+ tests) siga verde tras cada integración.
@@ -67,4 +67,4 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 
 ---
 
-*Última actualización: 2026-07-15 — SPEC v1.1 (incorpora análisis de TradingMY).*
+*Última actualización: 2026-07-15 — SPEC v1.2 (F1 y F3 en curso: contexto externo + reglas de riesgo implementadas y testeadas; falta infraestructura real).*

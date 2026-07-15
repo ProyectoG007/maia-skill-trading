@@ -1,7 +1,8 @@
 # SPEC — Sistema Robusto de Trading MAIA (Protocolo B'H / Ciclo E5)
 
-**Versión:** 1.1 · **Fecha:** 2026-07-15 · **Owner:** ProyectoG007
+**Versión:** 1.2 · **Fecha:** 2026-07-15 · **Owner:** ProyectoG007
 **Cambio v1.1:** se analizó `TradingMY` (fork `ProyectoG007/TradingMY_claude`) — pasa a ser el **núcleo operativo** del sistema. Superalgos se reclasifica como componente opcional/laboratorio.
+**Cambio v1.2:** F1 y F3 avanzan en código — contexto externo integrado al TradeAgent, microservicio TimesFM, esquema Postgres y reglas de riesgo por divergencia/contexto macro, todo con tests. Se corrige el alcance del backtest A/B de F2 (ver esa sección). Sigue pendiente toda decisión de infraestructura real (P0).
 
 Este documento sigue el **Protocolo E5** (Entendimiento → Estructuración → Ejecución → Evaluación → Evolución) y mapea cada componente a las **10 capas B'H**.
 
@@ -181,23 +182,26 @@ Ya implementadas en TradingMY: sizing 1%/trade, freno -4% diario / -8% total (ma
 ### F0 — Consolidación ✅ (esta entrega)
 Análisis de los 4 repos, SPEC v1.1, backlog.
 
-### F1 — Integración de señales (2-3 semanas)
-1. Postgres (Supabase): migrar TradingMY de SQLite + crear `macro_signals`/`forecasts` + pgvector.
-2. `services/timesfm/`: FastAPI `POST /forecast {symbol, horizon}`; datos vía yfinance/ccxt.
-3. Tododeia: extender Step 7 del SKILL.md para insertar `macro_context` en Postgres.
-4. TradingMY: inyectar ambos contextos en el prompt del TradeAgent; guardar FKs en `AgentDecision`.
-5. n8n: cron diario que corre Tododeia y verifica la frescura de señales (alerta si >24h sin señal macro — el sistema sigue operando sin ella, degradación elegante).
-6. Fix del bug `symbol_map` GBPUSD en config.
+### F1 — Integración de señales (2-3 semanas) 🔶 en curso
+1. ✅ `services/timesfm/`: FastAPI `POST /forecast {symbol, horizon}`; datos vía yfinance.
+2. ✅ Tododeia: Step 7b del SKILL.md — `scripts/persist_macro_context.py` escribe `macro_context.json` compartido (+ Postgres opcional).
+3. ✅ TradingMY: `src/context/external_context.py` inyecta ambos contextos en el prompt del TradeAgent.
+4. ✅ Fix del bug `symbol_map` GBPUSD en config, y de un bug de formato del prompt hallado al integrar.
+5. ✅ `docs/n8n/senal-macro-diaria.json`: workflow de cron diario (falta alerta de fallo cableada).
+6. ⬜ Postgres (Supabase): crear el proyecto real + aplicar `db/schema.sql` — bloqueado en P0, requiere confirmación del owner (infraestructura facturable).
+7. ⬜ Migrar TradingMY de SQLite a Postgres; FKs desde `AgentDecision` hacia `macro_signals`/`forecasts` — depende de 6.
+8. ⬜ Correr `services/timesfm/` con el checkpoint real (no se pudo bajar/ejecutar en el entorno de desarrollo usado para esta spec).
 
 ### F2 — Validación en paper/demo (≥ 4 semanas corriendo)
-1. Backtest de las estrategias activas con el motor existente (walk-forward, Monte Carlo) **con y sin** contexto macro/quant para medir si las señales nuevas realmente mejoran (A/B).
-2. Correr SimulatedBroker o MT5 demo con el pipeline completo.
-3. Gate de salida: ≥ 20 decisiones evaluadas; esperanza matemática > 0; el A/B muestra que el contexto no degrada.
+1. **Corrección de alcance (hallazgo durante F3):** el backtest A/B "con y sin contexto macro/quant" que proponía la versión anterior de este documento **no es directamente viable** — el motor de backtest de TradingMY (`backtesting.py`) corre estrategias técnicas puras barra por barra sobre datos históricos; Tododeia y TimesFM nunca corrieron en el pasado, así que no existe un historial de qué contexto macro/forecast había disponible en cada fecha histórica para simular "con contexto" retroactivamente.
+2. La validación real de F2 pasa a ser: (a) backtest técnico puro como ya existe (walk-forward, Monte Carlo, Kelly — ya construido en TradingMY), y (b) **paper trading en vivo** con las reglas de contexto de F3 activas, comparando día a día si ayudan o estorban usando datos reales que sí se van acumulando desde ahora en Postgres.
+3. Correr SimulatedBroker o MT5 demo con el pipeline completo.
+4. Gate de salida: ≥ 20 decisiones evaluadas; esperanza matemática > 0; las reglas de contexto no degradan el resultado frente a operar solo con indicadores técnicos.
 
-### F3 — Reglas de riesgo nuevas + crypto (en paralelo con F2)
-1. Implementar reglas de divergencia y contexto macro en RiskManager, con tests.
-2. `CCXTBroker` implementando `broker_base.py` (crypto spot, exchange a definir) → paper primero.
-3. (Alternativa a evaluar: usar el fork de freqtrade para crypto y dejar TradingMY solo forex/FTMO.)
+### F3 — Reglas de riesgo nuevas + crypto (en paralelo con F2) 🔶 en curso
+1. ✅ `src/context/context_rules.py` en TradingMY: regla de divergencia (TimesFM vs. decisión) y regla de contexto macro (sector Tododeia vs. decisión), con tests — ver detalle en `TradingMY_claude/pendientes.md`.
+2. ⬜ `CCXTBroker` implementando `broker_base.py` (crypto spot, exchange a definir) → paper primero.
+3. ⬜ (Alternativa a evaluar: usar el fork de freqtrade para crypto y dejar TradingMY solo forex/FTMO.)
 
 ### F4 — Live
 - MT5 real (FTMO) con `TRADINGMY_CONFIRM_LIVE=1` + aprobación manual Telegram los primeros 60 días.
@@ -215,15 +219,15 @@ Análisis de los 4 repos, SPEC v1.1, backlog.
 
 | Prueba | Criterio de aceptación |
 |---|---|
-| Suite existente TradingMY | 119+ tests siguen verdes tras cada integración |
-| Reglas de riesgo nuevas | Tests unitarios: divergencia y contexto macro con casos borde |
-| Integración señal→decisión | `macro_context` + `forecast` presentes en el prompt y trazables por FK en `AgentDecision` |
-| Webhooks/endpoints (Capa 6) | `/forecast` y endpoints dashboard responden 200 bajo carga (50 req/min) |
-| Latencia | Forecast TimesFM < 30s; tick completo del scheduler < 2 min |
-| A/B backtest | EM y drawdown con contexto ≥ sin contexto en ≥ 12 meses de datos |
-| Paper | ≥ 4 semanas, ≥ 20 decisiones, EM > 0 |
-| Kill-switch | Simulación de DD diario -4% detiene aperturas y alerta Telegram < 1 min |
-| Precisión RAG | Agente cita lección histórica relevante cuando existe (evaluación manual muestral) |
+| Suite existente TradingMY | ✅ 153/153 tests verdes (137 originales + 16 de reglas de contexto), tras cada integración |
+| Reglas de riesgo nuevas | ✅ 16 tests unitarios: divergencia y contexto macro con casos borde (`tests/test_context_rules.py`) |
+| Integración señal→decisión | ✅ `macro_context` + `forecast` presentes en el prompt (`external_context.py`, 17 tests) — falta la FK en `AgentDecision` (depende de Postgres) |
+| Webhooks/endpoints (Capa 6) | ⬜ `/forecast` y endpoints dashboard responden 200 bajo carga (50 req/min) — pendiente de correr `services/timesfm/` con infra real |
+| Latencia | ⬜ Forecast TimesFM < 30s; tick completo del scheduler < 2 min — no medido aún (requiere el modelo corriendo) |
+| Validación en paper (reemplaza al "A/B backtest" original — ver F2) | ⬜ ≥ 4 semanas, comparando decisiones con y sin reglas de contexto activas sobre datos reales acumulados día a día |
+| Paper | ⬜ ≥ 4 semanas, ≥ 20 decisiones, EM > 0 |
+| Kill-switch | ✅ Ya implementado y testeado en TradingMY (DrawdownGuard); falta simular específicamente el escenario de -4% con alerta Telegram end-to-end |
+| Precisión RAG | ⬜ Agente cita lección histórica relevante cuando existe (evaluación manual muestral) — depende de pgvector (Postgres) |
 
 ---
 
