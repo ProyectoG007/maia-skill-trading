@@ -1,0 +1,70 @@
+{
+  "name": "MAIA - Senal Macro Diaria (Tododeia)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 6 * * *" }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron - 06:00 UTC",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/maia-skill-trading && claude -p \"/investment-analysis\" --dangerously-skip-permissions"
+      },
+      "id": "run-tododeia",
+      "name": "Ejecutar Tododeia (Claude headless)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "command": "cd /opt/maia-skill-trading && python3 scripts/persist_macro_context.py dashboard/public/data/report.json"
+      },
+      "id": "persist-context",
+      "name": "Persistir macro_context.json",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.exitCode}}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-failure",
+      "name": "Fallo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Cron - 06:00 UTC": {
+      "main": [[{ "node": "Ejecutar Tododeia (Claude headless)", "type": "main", "index": 0 }]]
+    },
+    "Ejecutar Tododeia (Claude headless)": {
+      "main": [[{ "node": "Persistir macro_context.json", "type": "main", "index": 0 }]]
+    },
+    "Persistir macro_context.json": {
+      "main": [[{ "node": "Fallo?", "type": "main", "index": 0 }]]
+    }
+  }
+}

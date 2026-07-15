@@ -17,14 +17,20 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 
 ## P1 — Fase F1: Integración de señales (2-3 semanas)
 
-- [ ] 🐛 **Fix bug `symbol_map` en `TradingMY_claude/config.yaml`**: `"GBPUSD=X": "EURUSD"` debe ser `"GBPUSD"` — hoy una orden de GBPUSD se ejecutaría sobre EURUSD en MT5.
-- [ ] Crear proyecto Postgres (Supabase) + extensión `pgvector`.
-- [ ] Migrar TradingMY de SQLite a Postgres (SQLModel: cambiar connection string + migraciones).
-- [ ] Crear tablas `macro_signals` y `forecasts` con FK desde `AgentDecision` (trazabilidad señal→decisión→orden).
-- [ ] Crear `services/timesfm/`: FastAPI `POST /forecast` con `timesfm` de HF (`google/timesfm-2.0-500m-pytorch`) + OHLCV vía yfinance/ccxt.
-- [ ] Extender Step 7 de `SKILL.md` (Tododeia): insertar `macro_context` en Postgres además de `output/history/`.
-- [ ] Inyectar `macro_context` + `forecast` en `USER_PROMPT_TEMPLATE` del TradeAgent (`src/agents/prompts.py`).
-- [ ] Montar n8n: cron diario de Tododeia + alerta si la señal macro tiene >24h (degradación elegante: el sistema opera igual sin ella).
+- [x] 🐛 **Fix bug `symbol_map` en `TradingMY_claude/config.yaml`**: `"GBPUSD=X": "EURUSD"` → `"GBPUSD"` corregido (rama `claude/f1-integracion-senales`).
+- [x] 🐛 **Fix bug de formato en `USER_PROMPT_TEMPLATE`** (hallado al integrar): ternarios/aritmética dentro de `{...}` no son válidos para `str.format()` — `TradeAgent.analyze()` crasheaba con cualquier dato real. Corregido precalculando los valores antes del `.format()`.
+- [x] Crear `services/timesfm/`: FastAPI `POST /forecast` con `timesfm` de HF (`google/timesfm-2.0-500m-pytorch`) + OHLCV vía yfinance.
+- [x] Extender Step 7 de `SKILL.md` (Tododeia): nuevo Step 7b, escribe `macro_context.json` al directorio compartido (`scripts/persist_macro_context.py`) + Postgres opcional si `DATABASE_URL` está seteada.
+- [x] Módulo `src/context/external_context.py` en TradingMY: lee `macro_context.json` + `forecast_<SYMBOL>.json`, valida frescura, formatea para el prompt. 17 tests.
+- [x] Inyectar `external_context` en `USER_PROMPT_TEMPLATE` del TradeAgent y en `TradingScheduler._tick()` para el símbolo primario.
+- [x] `db/schema.sql`: esquema completo (`macro_signals`, `forecasts`, `signals`, `decisions`, `orders`, `signal_outcomes`, `memory_embeddings` con pgvector) — listo para aplicar en cuanto exista el proyecto Supabase.
+- [x] `docs/n8n/senal-macro-diaria.json`: workflow importable (cron 06:00 UTC → Tododeia headless → persistencia). Falta cablear alerta de fallo real.
+- [ ] **Crear el proyecto Postgres (Supabase) y aplicar `db/schema.sql`** — bloqueado en P0 (decisión de owner: no se crea infraestructura facturable sin confirmación).
+- [ ] Migrar TradingMY de SQLite a Postgres una vez exista el proyecto (SQLModel: cambiar connection string).
+- [ ] FK desde `AgentDecision` (TradingMY) hacia `macro_signals`/`forecasts` para trazabilidad completa señal→decisión→orden (depende de la migración a Postgres).
+- [ ] Instalar `services/timesfm/` en un host con GPU/CPU suficiente y probar la descarga real del checkpoint (~2GB) — no se pudo ejecutar en este sandbox (sin `timesfm`/`torch` instalables offline).
+- [ ] Workflow n8n para el forecast de TimesFM por símbolo (llamar `/forecast` → escribir `forecast_<SYMBOL>.json`) — falta, solo está el de Tododeia.
+- [ ] Instalar Claude Code CLI + credenciales en el host de n8n para que el nodo "Ejecutar Tododeia" funcione en producción.
 
 ## P2 — Fases F2/F3: Validación y riesgo
 

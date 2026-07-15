@@ -55,7 +55,7 @@ Un sistema de trading robusto **no es un solo programa**: es una tubería de 4 e
 ## Fases de implementación (resumen)
 
 1. **F0 — Consolidación** ✅: análisis de los 4 repos, SPEC v1.1 y backlog.
-2. **F1 — Integración de señales**: Postgres compartida, microservicio TimesFM, Tododeia persiste `macro_context`, TradeAgent recibe ambos contextos.
+2. **F1 — Integración de señales** 🔶 en curso: microservicio TimesFM, esquema Postgres, Tododeia persiste `macro_context.json`, TradeAgent de TradingMY lo recibe (junto al forecast) en su prompt. Falta crear el proyecto Postgres real (P0, pendiente de confirmación del owner) y correr `services/timesfm/` con el checkpoint descargado.
 3. **F2 — Validación**: backtest A/B (con y sin contexto) + **mínimo 4 semanas en paper/demo**.
 4. **F3 — Riesgo + crypto**: reglas de divergencia y contexto macro en el RiskManager; `CCXTBroker` para crypto spot.
 5. **F4 — Live (capital mínimo)**: MT5 real (FTMO) con confirmación por Telegram los primeros 60 días.
@@ -67,14 +67,22 @@ El detalle de cada fase, esquemas de datos y criterios de aceptación está en [
 
 ```
 maia-skill-trading/
-  SKILL.md              # Skill Tododeia (orquestador de análisis) — Etapa 1
-  references/           # Prompts de los 5 agentes
-  dashboard/            # Dashboard Next.js (UI, Capa 8)
-  assets/               # Template HTML de respaldo
-  SPEC.md               # Spec técnico del sistema completo (E1–E5)
-  PENDIENTES.md         # Backlog priorizado
+  SKILL.md               # Skill Tododeia (orquestador de análisis) — Etapa 1
+  references/             # Prompts de los 5 agentes
+  dashboard/              # Dashboard Next.js (UI, Capa 8)
+  assets/                 # Template HTML de respaldo
+  services/timesfm/       # Microservicio de forecast cuantitativo (M2)
+  scripts/
+    persist_macro_context.py  # Tododeia -> macro_context.json (+ Postgres opcional)
+  db/
+    schema.sql             # Esquema Postgres completo (Capa 2 + pgvector)
   docs/
-    TODODEIA_README.md  # Documentación original del skill base
+    TODODEIA_README.md      # Documentación original del skill base
+    n8n/                    # Workflows de orquestación (Capa 3)
+  tests/                   # Tests de scripts/ (pytest)
+  SPEC.md                 # Spec técnico del sistema completo (E1–E5)
+  PENDIENTES.md           # Backlog priorizado
+  .env.example            # Variables de entorno del sistema
 ```
 
 ## Aviso legal

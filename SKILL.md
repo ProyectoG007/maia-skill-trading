@@ -183,6 +183,28 @@ Combine all agent outputs into the final REPORT_DATA object:
 2. Save the REPORT_DATA as `output/history/YYYY-MM-DD.json` (using today's date).
 3. Keep only the last 30 report files — delete older ones to avoid bloat.
 
+### Step 7b: Persist Macro Context for the Trading System (MAIA integration)
+
+This step feeds the report into the rest of the MAIA trading system — see
+`SPEC.md` (module M1) and `PENDIENTES.md`. It's independent of the dashboard
+rendering in Step 8, so run it even if Node.js isn't available.
+
+1. Run `python scripts/persist_macro_context.py output/history/YYYY-MM-DD.json`
+   (the file just written in Step 7), or point it at
+   `dashboard/public/data/report.json` once Step 8 has written it.
+2. This writes `macro_context.json` (schema_version 1) to the directory in
+   `MAIA_CONTEXT_DIR` (default `context_data/`) — this is the file that
+   [TradingMY](https://github.com/ProyectoG007/TradingMY_claude)'s
+   `TradeAgent` reads via `src/context/external_context.py` for its
+   trading decisions.
+3. If `DATABASE_URL` is set (Postgres/Supabase, see `db/schema.sql`), the
+   script also inserts one row per asset into `macro_signals`. If it's not
+   set, this step is skipped without error — the shared file is enough for
+   the system to work end to end.
+4. If the script fails for any reason, log it but do NOT block the rest of
+   the workflow — this integration is additive; the standalone report must
+   still be generated and served.
+
 ### Step 8: Generate the Report
 
 **Primary (Next.js dashboard):**

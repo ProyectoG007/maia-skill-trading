@@ -1,0 +1,8 @@
+# MAIA Trading System — dependencias del sistema (fuera del skill de Claude Code)
+# El microservicio TimesFM tiene su propio requirements.txt en services/timesfm/
+
+pytest>=8.0.0
+
+# scripts/persist_macro_context.py — psycopg2 solo se importa si DATABASE_URL
+# esta seteada; instalar cuando se conecte a Postgres:
+# psycopg2-binary>=2.9.9
