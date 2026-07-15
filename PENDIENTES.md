@@ -10,10 +10,11 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 ## P0 — Bloqueantes / decisiones del owner
 
 - [x] ~~Fork de TradingMY~~ → hecho: `ProyectoG007/TradingMY_claude` (analizado en SPEC v1.1).
-- [ ] **Decidir motor crypto:** `CCXTBroker` dentro de TradingMY (recomendado) vs. fork de `freqtrade` como segundo motor.
-- [ ] **Elegir exchange crypto** (Binance, Bybit o Kraken según disponibilidad regional).
+- [x] ~~Crear proyecto Postgres~~ → hecho: Supabase `maia-trading` (ref `xtjffjxzwxxqmhhvlkxd`, org LogisticAs.Dev, free $0/mes), `db/schema.sql` + tablas propias de TradingMY aplicadas. Falta un paso manual tuyo: la contraseña de conexión (ver `.env.example`).
+- [x] **Decidir motor crypto:** confirmado — `CCXTBroker` dentro de TradingMY. Ver ítem en P2 (implementado esta noche).
+- [ ] **Elegir exchange crypto** (Binance, Bybit o Kraken según disponibilidad regional) — el `CCXTBroker` es agnóstico al exchange (usa la librería `ccxt`), pero corre por default contra el testnet de Binance hasta que definas cuál preferís.
 - [ ] **Definir capital inicial** para fase live (no bloquea F1-F3).
-- [ ] **Hosting:** Hetzner (recomendado) para TradingMY+TimesFM+n8n+Postgres; definir VPS Windows/Wine para `MT5Broker` (el paquete `MetaTrader5` no corre en Linux nativo).
+- [x] **Hosting:** confirmado — Railway para el stack 24/7 (TradingMY + TimesFM + n8n); ver `docker-compose.yml` y `docs/deploy/railway.md`. Falta que crees la cuenta/proyecto en Railway y me pases el token, o lo hagas vos siguiendo la guía. VPS Windows para `MT5Broker` sigue pendiente (el paquete `MetaTrader5` no corre en Linux nativo).
 
 ## P1 — Fase F1: Integración de señales (2-3 semanas)
 
@@ -23,11 +24,12 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 - [x] Extender Step 7 de `SKILL.md` (Tododeia): nuevo Step 7b, escribe `macro_context.json` al directorio compartido (`scripts/persist_macro_context.py`) + Postgres opcional si `DATABASE_URL` está seteada.
 - [x] Módulo `src/context/external_context.py` en TradingMY: lee `macro_context.json` + `forecast_<SYMBOL>.json`, valida frescura, formatea para el prompt. 17 tests.
 - [x] Inyectar `external_context` en `USER_PROMPT_TEMPLATE` del TradeAgent y en `TradingScheduler._tick()` para el símbolo primario.
-- [x] `db/schema.sql`: esquema completo (`macro_signals`, `forecasts`, `signals`, `decisions`, `orders`, `signal_outcomes`, `memory_embeddings` con pgvector) — listo para aplicar en cuanto exista el proyecto Supabase.
+- [x] `db/schema.sql`: esquema completo (`macro_signals`, `forecasts`, `signals`, `decisions`, `orders`, `signal_outcomes`, `memory_embeddings` con pgvector) — **aplicado** al proyecto real.
 - [x] `docs/n8n/senal-macro-diaria.json`: workflow importable (cron 06:00 UTC → Tododeia headless → persistencia). Falta cablear alerta de fallo real.
-- [ ] **Crear el proyecto Postgres (Supabase) y aplicar `db/schema.sql`** — bloqueado en P0 (decisión de owner: no se crea infraestructura facturable sin confirmación).
-- [ ] Migrar TradingMY de SQLite a Postgres una vez exista el proyecto (SQLModel: cambiar connection string).
-- [ ] FK desde `AgentDecision` (TradingMY) hacia `macro_signals`/`forecasts` para trazabilidad completa señal→decisión→orden (depende de la migración a Postgres).
+- [x] **Proyecto Postgres (Supabase) creado y `db/schema.sql` aplicado**: `maia-trading`, ref `xtjffjxzwxxqmhhvlkxd`, plan free ($0/mes). También se aplicaron las tablas propias de TradingMY (`trade`, `dailysnapshot`, `configoverride`, `openposition`, `traderinstruction`, `agentdecision`, `signal`) para que `dashboard/api/database.py` pueda apuntar ahí directamente.
+- [x] `dashboard/api/database.py` (TradingMY) ahora lee `DATABASE_URL` del entorno — Postgres si está seteada, SQLite si no (degradación elegante, mismo criterio que el resto del sistema).
+- [ ] **Completar la conexión real**: falta que copies la contraseña de la base desde el dashboard de Supabase (Project Settings → Database) a tu `.env` — la API no la expone por seguridad, es el único paso manual. Instrucciones en `.env.example` de ambos repos.
+- [ ] FK desde `AgentDecision` (TradingMY) hacia `macro_signals`/`forecasts` para trazabilidad completa señal→decisión→orden — posible ahora que la DB existe, pendiente de implementar.
 - [ ] Instalar `services/timesfm/` en un host con GPU/CPU suficiente y probar la descarga real del checkpoint (~2GB) — no se pudo ejecutar en este sandbox (sin `timesfm`/`torch` instalables offline).
 - [ ] Workflow n8n para el forecast de TimesFM por símbolo (llamar `/forecast` → escribir `forecast_<SYMBOL>.json`) — falta, solo está el de Tododeia.
 - [ ] Instalar Claude Code CLI + credenciales en el host de n8n para que el nodo "Ejecutar Tododeia" funcione en producción.
@@ -38,9 +40,9 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 - [x] Implementar en el Risk Engine la **regla de divergencia** (TimesFM contradice al agente con spread de cuantiles bajo → reduce tamaño o bloquea) + tests — `TradingMY_claude/src/context/context_rules.py`, 16 tests.
 - [x] Implementar la **regla de contexto macro** (sector contrario con accuracy > 60% → reduce tamaño) + tests — mismo módulo.
 - [ ] Correr paper/demo (SimulatedBroker o MT5 demo) ≥ 4 semanas con ≥ 20 decisiones evaluadas — requiere que el sistema esté desplegado 24/7 (depende de P0: hosting).
-- [ ] Implementar `CCXTBroker` sobre `broker_base.py` (si se decide esa vía) → paper crypto.
+- [x] Implementar `CCXTBroker` sobre `broker_base.py` → `TradingMY_claude/src/execution/ccxt_broker.py`, modo paper/testnet (Binance por default), 21 tests. Falta: elegir exchange real, conectarlo al `TradingScheduler` (hoy solo instancia MT5Broker/SimulatedBroker), y `modify_position`/`close_position` (SL/TP en spot).
 - [ ] Job semanal n8n: cruzar accuracy macro (Tododeia) con win rate real (TradingMY) y ajustar pesos del prompt.
-- [ ] Verificar que la suite existente de TradingMY (119+ tests) siga verde tras cada integración.
+- [x] Verificar que la suite existente de TradingMY siga verde tras cada integración — **174/174 tests** tras F1+F3+CCXTBroker.
 
 ## P2 — Dashboards (Capa 8)
 

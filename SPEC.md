@@ -188,8 +188,8 @@ Análisis de los 4 repos, SPEC v1.1, backlog.
 3. ✅ TradingMY: `src/context/external_context.py` inyecta ambos contextos en el prompt del TradeAgent.
 4. ✅ Fix del bug `symbol_map` GBPUSD en config, y de un bug de formato del prompt hallado al integrar.
 5. ✅ `docs/n8n/senal-macro-diaria.json`: workflow de cron diario (falta alerta de fallo cableada).
-6. ⬜ Postgres (Supabase): crear el proyecto real + aplicar `db/schema.sql` — bloqueado en P0, requiere confirmación del owner (infraestructura facturable).
-7. ⬜ Migrar TradingMY de SQLite a Postgres; FKs desde `AgentDecision` hacia `macro_signals`/`forecasts` — depende de 6.
+6. ✅ Postgres (Supabase): proyecto real creado (`maia-trading`, ref `xtjffjxzwxxqmhhvlkxd`, free $0/mes) y `db/schema.sql` aplicado, junto con las tablas propias de TradingMY. Falta un paso manual del owner: completar la contraseña de conexión en `.env` (no se puede obtener por API).
+7. ✅ `dashboard/api/database.py` de TradingMY lee `DATABASE_URL` del entorno (Postgres si está seteada, SQLite si no). ⬜ FKs desde `AgentDecision` hacia `macro_signals`/`forecasts` — pendiente de implementar ahora que la DB existe.
 8. ⬜ Correr `services/timesfm/` con el checkpoint real (no se pudo bajar/ejecutar en el entorno de desarrollo usado para esta spec).
 
 ### F2 — Validación en paper/demo (≥ 4 semanas corriendo)
@@ -241,9 +241,16 @@ Análisis de los 4 repos, SPEC v1.1, backlog.
 
 ---
 
+## Decisiones tomadas por el owner (2026-07-15, sesión nocturna)
+
+1. **Crypto:** ✅ `CCXTBroker` dentro de TradingMY — implementado en modo paper/testnet.
+2. **Postgres:** ✅ Crear el proyecto real ahora — hecho (`maia-trading`, Supabase, free tier).
+3. **Dashboards:** ✅ Publicar en Vercel — hecho (ver enlaces en el resumen de la sesión).
+4. **Hosting del backend 24/7:** ✅ Railway — `docker-compose.yml` y guía preparados; falta que crees la cuenta/proyecto (sin conector de Railway en esta sesión, no lo pude provisionar yo mismo).
+
 ## Decisiones abiertas (owner)
 
-1. **Crypto:** ¿`CCXTBroker` dentro de TradingMY (recomendado, menos piezas) o freqtrade como segundo motor?
-2. **Exchange crypto** (Binance/Bybit/Kraken según región) y **capital inicial** de F4.
-3. **Hosting** del stack (TradingMY + TimesFM + n8n + Postgres): Hetzner recomendado; nota: `MT5Broker` requiere Windows o Wine para el paquete `MetaTrader5` — definir dónde corre esa pieza (VPS Windows es lo usual para FTMO).
-4. **Superalgos:** ¿mantener el fork como laboratorio o archivarlo hasta que crypto escale?
+1. **Exchange crypto** (Binance/Bybit/Kraken según región) — el `CCXTBroker` es agnóstico, corre contra testnet de Binance por default hasta que definas cuál usar en real.
+2. **Capital inicial** de F4 (no bloquea nada por ahora).
+3. **VPS Windows para `MT5Broker`**: el paquete `MetaTrader5` no corre en Linux — Railway no sirve para esta pieza puntual, se necesita un VPS Windows aparte cuando llegue el momento de FTMO real.
+4. **Superalgos:** ¿mantener el fork como laboratorio o archivarlo ahora que crypto vive en `CCXTBroker`?
