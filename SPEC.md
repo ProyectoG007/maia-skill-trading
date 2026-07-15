@@ -1,8 +1,9 @@
 # SPEC — Sistema Robusto de Trading MAIA (Protocolo B'H / Ciclo E5)
 
-**Versión:** 1.2 · **Fecha:** 2026-07-15 · **Owner:** ProyectoG007
+**Versión:** 1.3 · **Fecha:** 2026-07-15 · **Owner:** ProyectoG007
 **Cambio v1.1:** se analizó `TradingMY` (fork `ProyectoG007/TradingMY_claude`) — pasa a ser el **núcleo operativo** del sistema. Superalgos se reclasifica como componente opcional/laboratorio.
-**Cambio v1.2:** F1 y F3 avanzan en código — contexto externo integrado al TradeAgent, microservicio TimesFM, esquema Postgres y reglas de riesgo por divergencia/contexto macro, todo con tests. Se corrige el alcance del backtest A/B de F2 (ver esa sección). Sigue pendiente toda decisión de infraestructura real (P0).
+**Cambio v1.2:** F1 y F3 avanzan en código — contexto externo integrado al TradeAgent, microservicio TimesFM, esquema Postgres y reglas de riesgo por divergencia/contexto macro, todo con tests. Se corrige el alcance del backtest A/B de F2 (ver esa sección).
+**Cambio v1.3:** decisiones P0 resueltas por el owner — proyecto Postgres real creado (Supabase), `CCXTBroker` implementado, hosting definido (Railway), dashboards en camino a Vercel. Ver "Decisiones tomadas por el owner" al final del documento.
 
 Este documento sigue el **Protocolo E5** (Entendimiento → Estructuración → Ejecución → Evaluación → Evolución) y mapea cada componente a las **10 capas B'H**.
 
