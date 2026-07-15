@@ -1,7 +1,7 @@
 # SPEC — Sistema Robusto de Trading MAIA (Protocolo B'H / Ciclo E5)
 
-**Versión:** 1.0 · **Fecha:** 2026-07-15 · **Owner:** ProyectoG007
-**Estado:** Aprobación pendiente → luego F1
+**Versión:** 1.1 · **Fecha:** 2026-07-15 · **Owner:** ProyectoG007
+**Cambio v1.1:** se analizó `TradingMY` (fork `ProyectoG007/TradingMY_claude`) — pasa a ser el **núcleo operativo** del sistema. Superalgos se reclasifica como componente opcional/laboratorio.
 
 Este documento sigue el **Protocolo E5** (Entendimiento → Estructuración → Ejecución → Evaluación → Evolución) y mapea cada componente a las **10 capas B'H**.
 
@@ -13,226 +13,201 @@ Este documento sigue el **Protocolo E5** (Entendimiento → Estructuración → 
 
 Construir un sistema de trading robusto que:
 
-1. **Analice** mercados (crypto, acciones, forex, materias primas) con agentes IA — ya resuelto en ~80% por el skill Tododeia de este repo.
+1. **Analice** mercados (crypto, acciones, forex, materias primas) con agentes IA.
 2. **Pronostique** precios con un modelo cuantitativo (TimesFM) para contrastar la opinión de los LLM.
 3. **Decida** operaciones combinando ambas señales con un perfil de riesgo.
-4. **Ejecute** en exchange — primero simulado (paper), después real — usando Superalgos como motor.
+4. **Ejecute** primero simulado (paper/demo), después real, con gestión de riesgo determinista.
 5. **Aprenda**: registre cada llamada (señal → resultado real) y ajuste su comportamiento.
 
 ### Inputs / Outputs / Contexto (definición E1)
 
 | Elemento | Definición |
 |---|---|
-| **Inputs** | Datos de mercado en vivo (web research + APIs), OHLCV histórico (Superalgos data mining), perfil de riesgo del usuario, historial de señales previas (RAG) |
-| **Contexto RAG** | Reportes históricos (`output/history/*.json`), accuracy por agente/sector, lecciones de trades cerrados |
-| **Output esperado** | Señales estructuradas (JSON), órdenes ejecutadas con gestión de riesgo, dashboard con PnL y accuracy, alertas por Telegram |
-| **No-objetivos (v1)** | HFT/scalping (latencia LLM lo impide), derivados complejos, apalancamiento, multi-exchange simultáneo |
+| **Inputs** | OHLCV (yfinance/MT5/ccxt), research macro multi-sector (Tododeia), forecast cuantitativo (TimesFM), perfil de riesgo e instrucciones diarias del trader |
+| **Contexto RAG** | Reportes históricos de Tododeia, historial de decisiones del agente (`AgentDecision`), accuracy por sector, lecciones de trades cerrados |
+| **Output esperado** | Decisiones estructuradas (`TradeDecision`), órdenes con SL/TP y scaling out, dashboard con PnL/accuracy, alertas y aprobación por Telegram |
+| **No-objetivos (v1)** | HFT/scalping, derivados complejos, apalancamiento fuera de FTMO, multi-exchange simultáneo |
 
 ### Análisis de los repositorios fuente
 
-#### 1. `maia-skill-trading` / `Hainrixz/maia-skill` (Tododeia) — LEÍDO ✅
+#### 1. `TradingMY` (`ProyectoG007/TradingMY_claude`, fork de `devmv1979-star/TradingMY`) — LEÍDO ✅ → **NÚCLEO OPERATIVO**
 
-- **Qué es:** Skill de Claude Code. Orquestador (`SKILL.md`) que lanza 4 agentes sectoriales en paralelo (crypto, stocks, forex, commodities) + 1 agente de estrategia que sintetiza, rankea por riesgo ajustado y asigna portafolio. Guarda historial (`output/history/YYYY-MM-DD.json`), trackea accuracy contra resultados reales, y sirve dashboard Next.js bilingüe (puerto 3420) con fallback HTML.
-- **Fortalezas:** esquemas JSON ya definidos y probados; perfiles de riesgo; verificación cruzada de fuentes (2+ fuentes con agreement score); sentimiento social; tracking de precisión histórica; UI lista.
-- **Debilidades para trading real:** no ejecuta órdenes; los datos vienen de web research (sin garantía de frescura/precisión tick-level); no hay backtesting; el output es un reporte, no una señal accionable por máquina.
-- **Veredicto:** es la **Etapa 1 (Señal)** del sistema. Se extiende, no se reescribe.
+- **Qué es:** sistema de trading algorítmico completo en Python 3.11 (~5.000 líneas core + dashboard FastAPI/React), orientado a **FTMO Challenge** (forex + SPY vía MetaTrader5, con broker simulado para paper).
+- **Ya implementa el pipeline completo de 4 etapas:**
+  - *Señal:* `src/signals/` (pandas-ta) + `src/strategy/` (RSI+EMA, MACD+BB, multi-voter, StrategyBuilder que genera estrategias desde lenguaje natural vía Telegram).
+  - *Decisión:* `src/agents/trade_agent.py` — TradeAgent con Claude API, salida Pydantic `TradeDecision` (action/confidence/SL/TP1/TP2), validada contra límites FTMO.
+  - *Riesgo:* `src/risk/` — PositionSizer, RiskManager y **DrawdownGuard determinista** (para a -4% diario / -8% total, margen sobre las reglas FTMO -5%/-10%).
+  - *Ejecución:* `src/execution/` — `broker_base.py` (interfaz), `SimulatedBroker` (slippage/spread), `MT5Broker` (con bloqueo `TRADINGMY_CONFIRM_LIVE=1` para live real), OrderManager con timeout y scaling out.
+  - *Feedback:* SQLite+SQLModel (trades, decisiones, snapshots), analytics (Kelly, Monte Carlo, esperanza matemática, rachas, win rate por hora/día/activo), 119-138 tests.
+  - *Canales:* Telegram completo — alertas, `/status`, `/plan` (instrucciones diarias en lenguaje natural), **aprobación manual con botones inline** y `auto_approve_above: 85`.
+- **Debilidades:** solo MT5/yfinance (sin crypto nativo); SQLite (no Postgres); sin señal macro externa ni forecast cuantitativo; el TradeAgent razona solo con indicadores técnicos del momento; fork con bug conocido en `config.yaml` (`symbol_map` de GBPUSD apunta a EURUSD).
+- **Veredicto:** **es la columna vertebral del sistema.** No se reconstruye nada de lo que ya tiene: se **extiende** con las señales de Tododeia y TimesFM como contexto del TradeAgent, y con un `CCXTBroker` para crypto spot.
 
-#### 2. `ProyectoG007/Superalgos_trading` (fork de Superalgos v1.6.1) — LEÍDO ✅
+#### 2. `maia-skill-trading` (este repo, base de `Hainrixz/maia-skill` — Tododeia) — LEÍDO ✅ → **CAPA DE SEÑAL MACRO**
 
-- **Qué es:** Plataforma completa Node.js (~6.800 archivos): data mining de exchanges (OHLCV + indicadores), diseñador visual de estrategias, backtesting, paper trading, live trading (CCXT), TaskServer para bots 24/7, red de señales (Trading-Signals), Portfolio-Management, y **Bitcoin-Factory** (forecasting ML con TensorFlow — precedente directo de lo que haremos con TimesFM).
-- **Fortalezas:** motor de ejecución y backtesting maduro y battle-tested; corre headless en Docker/cloud; maneja claves de exchange; simulación realista con slippage y fees.
-- **Debilidades:** curva de aprendizaje alta; monolito grande; su UI visual no se integra con nuestro stack; el fork está desactualizado respecto a upstream.
-- **Veredicto:** **motor de las Etapas 3-4 (Backtesting + Ejecución)**. Se usa como servicio externo (headless), NO se mezcla su código con este repo. La integración es por **Trading Signals / webhooks / archivos de señal**, no por código compartido.
+- **Qué es:** skill de Claude Code con 5 agentes (4 sectoriales: crypto/stocks/forex/commodities + 1 estrategia) que hace research web en vivo, rankea por riesgo ajustado, trackea accuracy histórica y sirve dashboard Next.js bilingüe.
+- **Fortalezas:** visión macro multi-sector que TradingMY no tiene; esquemas JSON probados; perfiles de riesgo; verificación cruzada de fuentes; tracking de precisión.
+- **Debilidades:** no ejecuta; datos de web research (no tick-level); output pensado para humanos.
+- **Veredicto:** **proveedor de contexto macro** del TradeAgent: "el sector forex está bearish por X, el DXY sube, evento Y esta semana". Corre 1×/día vía cron y persiste señales estructuradas que TradingMY consume.
 
-#### 3. `devmv1979-star/TradingMY` — NO ACCESIBLE ⚠️
+#### 3. `ProyectoG007/Superalgos_trading` (fork de Superalgos v1.6.1) — LEÍDO ✅ → **OPCIONAL / LABORATORIO CRYPTO**
 
-- Pertenece a otro dueño y no existe fork bajo `ProyectoG007`, por lo que esta sesión no pudo leerlo (restricción de scope entre owners).
-- **Acción requerida (P0 en PENDIENTES.md):** hacer fork a `ProyectoG007/TradingMY` o iniciar una sesión con ese repo como fuente inicial. El spec reserva un slot para él en la Etapa que corresponda una vez analizado.
+- **Qué es:** plataforma Node.js masiva (~6.800 archivos): data mining de exchanges, diseñador visual de estrategias, backtesting, paper/live crypto (CCXT), Bitcoin-Factory (ML/TensorFlow).
+- **Veredicto v1.1:** dado que TradingMY ya cubre backtesting y ejecución, Superalgos **deja de ser crítico**. Queda como: (a) laboratorio de data mining/backtesting crypto, (b) referencia de diseño. Para operar crypto en producción es más simple agregar `CCXTBroker` a TradingMY (misma interfaz `broker_base.py`) que operar el monolito. Reevaluar si el volumen crypto lo justifica.
 
-#### 4. Contexto adicional detectado
+#### 4. Complementos
 
-- **`ProyectoG007/TradingAgents` y `TradingAgents-CN`** (forks ya en tu cuenta): framework multi-agente LLM para trading (analistas fundamental/técnico/sentimiento/noticias, debate bull vs. bear, trader, equipo de riesgo). Aporta el patrón de **debate adversarial** para la Etapa 2 (Decisión).
-- **TimesFM** (`google-research/timesfm`, de tus capturas de Instagram): modelo fundacional de series temporales de Google, zero-shot, disponible en Hugging Face (`google/timesfm-2.0-500m-pytorch`). Aporta el **forecast cuantitativo** que le falta a Tododeia.
+- **TimesFM** (`google-research/timesfm`): modelo fundacional de forecasting de Google (HF: `google/timesfm-2.0-500m-pytorch`), zero-shot. Aporta el **forecast cuantitativo** con cuantiles que le falta al TradeAgent. Precedente en el ecosistema: Bitcoin-Factory de Superalgos.
+- **`ProyectoG007/TradingAgents` / `TradingAgents-CN`** (forks en tu cuenta): patrón de **debate bull vs. bear + risk manager** — referencia para evolucionar el prompt del TradeAgent (E5), no se integra código.
+- **`ProyectoG007/freqtrade`** (fork detectado en tu cuenta): bot crypto Python maduro; alternativa a `CCXTBroker` propio si se prioriza crypto — decisión abierta.
 
-### Criterio de "no ambigüedad" (gate E1 → E2)
+### Gate E1 → E2
 
-- ✅ Alcance v1: crypto spot (BTC, ETH + descubrimiento dinámico), 1 exchange (Binance u otro disponible en tu región vía CCXT), timeframes 1h-1d.
-- ✅ La IA propone, la capa de riesgo determinista dispone, el humano confirma (modo semi-automático en F4).
-- ⚠️ Pendiente de decisión del owner: exchange concreto y capital inicial de F4 (no bloquea F1-F3).
+- ✅ Alcance v1: lo que TradingMY ya opera (EURUSD, GBPUSD, SPY) + BTC/ETH cuando exista `CCXTBroker`.
+- ✅ La IA propone (TradeAgent), el riesgo determinista dispone (DrawdownGuard/RiskManager), el humano confirma (aprobación Telegram ya implementada).
+- ⚠️ Decisiones abiertas al final del documento.
 
 ---
 
 ## E2 — Estructuración
 
-### Arquitectura general
+### Arquitectura v1.1
 
 ```
-                    CAPA 3 (n8n orquesta todo por cron/webhook)
- ┌──────────────────────────────────────────────────────────────────────┐
- │                                                                      │
- │  [ETAPA 1: SEÑAL]                [ETAPA 2: DECISIÓN]                 │
- │  ┌─────────────────┐             ┌──────────────────┐                │
- │  │ Tododeia        │  report.json│ Agente Decisión  │ decision.json  │
- │  │ 4 agentes + 1   ├────────────▶│ (debate bull/bear│───────┐        │
- │  │ estrategia      │             │  + risk manager) │       │        │
- │  └─────────────────┘             └──────────────────┘       │        │
- │  ┌─────────────────┐                    ▲                   ▼        │
- │  │ TimesFM Service │  forecast.json     │          [ETAPA 3: RIESGO] │
- │  │ (forecast quant)├────────────────────┘          ┌──────────────┐  │
- │  └─────────────────┘                               │ Risk Engine  │  │
- │           ▲                                        │ DETERMINISTA │  │
- │           │ OHLCV                                  │ (sin LLM)    │  │
- │  ┌────────┴────────┐                               └──────┬───────┘  │
- │  │ Superalgos      │◀──────── señal aprobada ─────────────┘          │
- │  │ Data Mining +   │          (webhook/signal)                       │
- │  │ Backtest +      │  [ETAPA 4: EJECUCIÓN]                           │
- │  │ Paper/Live      │─────▶ Exchange (CCXT)                           │
- │  └─────────────────┘                                                 │
- │           │                                                          │
- │           ▼ fills, PnL                                               │
- │  ┌─────────────────┐    ┌──────────────┐    ┌────────────────┐       │
- │  │ Postgres +      │───▶│ Dashboard    │    │ Telegram       │       │
- │  │ pgvector (memoria)   │ Next.js      │    │ (alertas/confirm)      │
- │  └─────────────────┘    └──────────────┘    └────────────────┘       │
- └──────────────────────────────────────────────────────────────────────┘
+            CAPA 3: n8n / APScheduler (cron diario + ticks del scheduler)
+ ┌───────────────────────────────────────────────────────────────────────┐
+ │  [SEÑAL MACRO - 1×/día]              [SEÑAL QUANT - por tick]         │
+ │  ┌──────────────────┐                ┌──────────────────┐             │
+ │  │ Tododeia (skill) │                │ TimesFM Service  │             │
+ │  │ 5 agentes web    │                │ FastAPI /forecast│             │
+ │  └────────┬─────────┘                └────────┬─────────┘             │
+ │           │ macro_context.json                │ forecast.json         │
+ │           ▼                                   ▼                       │
+ │  ┌────────────────────────────────────────────────────────┐           │
+ │  │              TRADINGMY (núcleo operativo)              │           │
+ │  │                                                        │           │
+ │  │  Scheduler ──▶ TradeAgent (Claude)                     │           │
+ │  │                  │ TradeDecision (Pydantic)            │           │
+ │  │                  ▼                                     │           │
+ │  │  RiskManager + DrawdownGuard (determinista, FTMO)      │           │
+ │  │                  │ aprobada/rechazada/resized          │           │
+ │  │                  ▼                                     │           │
+ │  │  OrderManager ──▶ SimulatedBroker | MT5Broker | CCXT*  │           │
+ │  │       │                                    (*nuevo)   │           │
+ │  │       ▼ fills, PnL, snapshots                          │           │
+ │  │  DB (SQLite → Postgres) + Analytics (Kelly/MC/rachas)  │           │
+ │  └───────┬──────────────────────────┬─────────────────────┘           │
+ │          ▼                          ▼                                 │
+ │  Dashboard FastAPI+React     Telegram (alertas, /plan,                │
+ │  (+ dashboard Next.js         aprobación manual inline)               │
+ │    de Tododeia)                                                       │
+ └───────────────────────────────────────────────────────────────────────┘
+     Superalgos (opcional): data mining / backtesting crypto de laboratorio
 ```
 
-### Capas B'H tocadas por módulo
+### Capas B'H por módulo
 
-| Módulo | Capas B'H | Tecnología |
+| Módulo | Capas B'H | Estado |
 |---|---|---|
-| M1 Señal LLM (Tododeia) | 4, 7 | Claude Code skill (existente, se extiende) |
-| M2 Señal Quant (TimesFM) | 4, 7 | Python + `timesfm` (HF) como microservicio FastAPI |
-| M3 Decisión | 7 | Agente LLM con patrón debate (ref. TradingAgents) |
-| M4 Risk Engine | 10 | TypeScript/Python puro, testeado, sin LLM |
-| M5 Ejecución | 1, 6 | Superalgos headless (Docker) + Trading Signals/webhook |
-| M6 Datos & Memoria | 2, 5 | Postgres (Supabase) + pgvector |
-| M7 Orquestación | 3, 6 | n8n (cron + webhooks) |
-| M8 UI | 8 | Dashboard Next.js existente + vistas de posiciones/PnL |
-| M9 Canales | 9 | Bot de Telegram (alertas + confirmación de órdenes) |
-| M10 Observabilidad | 10 | Logs JSON estructurados, métricas, kill-switch |
+| M1 Señal macro (Tododeia) | 4, 7 | ✅ Existe — falta persistir a DB compartida |
+| M2 Señal quant (TimesFM) | 4, 7 | 🆕 Microservicio FastAPI a crear |
+| M3 Decisión (TradeAgent) | 7 | ✅ Existe en TradingMY — falta inyectar M1+M2 al prompt |
+| M4 Riesgo (RiskManager/DrawdownGuard) | 10 | ✅ Existe, testeado — falta regla de divergencia |
+| M5 Ejecución (brokers) | 1, 6 | ✅ MT5+Simulado — 🆕 CCXTBroker para crypto |
+| M6 Datos & memoria | 2, 5 | ✅ SQLite — migrar a Postgres+pgvector (Supabase) |
+| M7 Orquestación | 3, 6 | ✅ APScheduler interno — 🆕 n8n para el cron macro |
+| M8 UI | 8 | ✅ 2 dashboards (React de TradingMY + Next.js de Tododeia) |
+| M9 Canales | 9 | ✅ Telegram completo en TradingMY |
+| M10 Observabilidad | 10 | ✅ Prometheus + logs — falta consolidar métricas de accuracy macro |
 
-### Modelo de datos (Postgres — Capa 2)
+### Contratos JSON nuevos (Capa 6)
 
-```sql
--- Señales generadas (Etapa 1)
-CREATE TABLE signals (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  source        TEXT NOT NULL,           -- 'tododeia' | 'timesfm'
-  symbol        TEXT NOT NULL,           -- 'BTC/USDT'
-  direction     TEXT NOT NULL,           -- 'buy' | 'sell' | 'hold'
-  confidence    NUMERIC(3,1) NOT NULL,   -- 0-10
-  horizon       TEXT NOT NULL,           -- '1d' | '7d' | '30d'
-  price_at_signal NUMERIC NOT NULL,
-  forecast_price  NUMERIC,               -- solo timesfm
-  raw_payload   JSONB NOT NULL           -- reporte completo del agente
-);
-
--- Decisiones (Etapa 2): fusión de señales + perfil de riesgo
-CREATE TABLE decisions (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  signal_ids    UUID[] NOT NULL,
-  symbol        TEXT NOT NULL,
-  action        TEXT NOT NULL,           -- 'open_long' | 'close' | 'no_trade'
-  size_pct      NUMERIC NOT NULL,        -- % del portafolio propuesto
-  stop_loss     NUMERIC,
-  take_profit   NUMERIC,
-  reasoning     TEXT NOT NULL,
-  risk_profile  TEXT NOT NULL
-);
-
--- Veredictos del Risk Engine (Etapa 3) y órdenes (Etapa 4)
-CREATE TABLE orders (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  decision_id   UUID REFERENCES decisions(id),
-  risk_verdict  TEXT NOT NULL,           -- 'approved' | 'rejected' | 'resized'
-  risk_reasons  TEXT[],
-  mode          TEXT NOT NULL,           -- 'paper' | 'live'
-  status        TEXT NOT NULL,           -- 'pending_confirm' | 'sent' | 'filled' | 'cancelled'
-  exchange_order_id TEXT,
-  filled_price  NUMERIC,
-  filled_at     TIMESTAMPTZ
-);
-
--- Resultado real de cada señal (para accuracy — cierra el loop E5)
-CREATE TABLE signal_outcomes (
-  signal_id     UUID REFERENCES signals(id),
-  evaluated_at  TIMESTAMPTZ NOT NULL,
-  price_actual  NUMERIC NOT NULL,
-  was_correct   BOOLEAN NOT NULL,
-  pnl_pct       NUMERIC
-);
-```
-
-Además: `pgvector` para embeddings de reportes/noticias (memoria RAG del agente de decisión, Capa 5).
-
-### Contratos JSON entre etapas (Capa 6)
-
-**`forecast.json` (M2 TimesFM → M3):**
+**`macro_context.json` (M1 Tododeia → M3 TradeAgent), 1×/día:**
 
 ```json
 {
-  "source": "timesfm",
-  "symbol": "BTC/USDT",
+  "schema_version": 1,
+  "source": "tododeia",
   "generated_at": "2026-07-15T12:00:00Z",
-  "horizon_hours": 168,
-  "last_price": 67500.0,
-  "forecast": [{"t": "+24h", "mean": 68200.0, "q10": 65900.0, "q90": 70100.0}],
-  "trend": "up",
-  "confidence_note": "quantile spread 6.2% — moderada"
+  "risk_profile": "moderate",
+  "sectors": {
+    "forex": {"outlook": "bearish", "summary": "...", "top_pick": "USD/JPY"},
+    "crypto": {"outlook": "bullish", "summary": "...", "top_pick": "BTC"}
+  },
+  "macro_environment": {"interest_rate_outlook": "falling", "geopolitical_risk": "medium", "key_factors": ["..."]},
+  "warnings": ["..."],
+  "accuracy_last_30d": {"forex": 0.62, "crypto": 0.58}
 }
 ```
 
-**`decision.json` (M3 → M4 Risk Engine):** mismo shape que la tabla `decisions` (arriba).
+**`forecast.json` (M2 TimesFM → M3), por símbolo/tick:**
 
-**Señal aprobada (M4 → Superalgos):** webhook HTTP al TaskServer / Trading-Signals de Superalgos con `{symbol, action, size, stop_loss, take_profit, mode}`. Respuesta esperada HTTP 200 (estándar E4).
+```json
+{
+  "schema_version": 1,
+  "source": "timesfm",
+  "symbol": "EURUSD",
+  "generated_at": "2026-07-15T12:00:00Z",
+  "horizon_hours": 24,
+  "last_price": 1.0842,
+  "forecast": [{"t": "+4h", "mean": 1.0851, "q10": 1.0829, "q90": 1.0873}],
+  "trend": "up",
+  "quantile_spread_pct": 0.4
+}
+```
 
-### Reglas del Risk Engine (M4 — deterministas, configurables en un YAML)
+Ambos se inyectan en `USER_PROMPT_TEMPLATE` del TradeAgent (`src/agents/prompts.py`) como bloques de contexto adicionales, y se persisten en DB.
 
-1. Tamaño máximo por posición: 5% del capital (2% en perfil conservador).
-2. Exposición total máxima: 30% del capital; resto en stable/cash.
-3. Stop-loss obligatorio en toda orden; rechazo si la decisión no lo trae.
-4. Drawdown diario > 3% → kill-switch: cierra nuevas aperturas 24h y alerta por Telegram.
-5. Máx. 3 órdenes/día; cooldown de 4h por símbolo.
-6. Divergencia dura: si TimesFM y Tododeia se contradicen con confianza alta en ambos → `no_trade` forzado.
-7. Modo live requiere confirmación humana por Telegram hasta acumular 60 días de track record.
+### Modelo de datos
+
+TradingMY ya tiene modelos SQLModel (trades, `AgentDecision`, snapshots, `TraderInstructions`, `ChatMessage`). Cambios:
+
+1. **Migración SQLite → Postgres (Supabase)** — SQLModel lo soporta con cambiar la connection string; habilita acceso multi-servicio (n8n, Tododeia, dashboards).
+2. **Tablas nuevas:** `macro_signals` (output Tododeia por sector/asset) y `forecasts` (output TimesFM), con FK desde `AgentDecision` para trazabilidad señal→decisión→orden→resultado.
+3. **pgvector** para memoria RAG (Capa 5): embeddings de reportes macro y lecciones de trades cerrados.
+
+### Reglas de riesgo (M4) — estado
+
+Ya implementadas en TradingMY: sizing 1%/trade, freno -4% diario / -8% total (margen FTMO), máx. 3 posiciones, SL obligatorio validado en TradeDecision, aprobación manual con timeout, kill-switch (`/brake on`).
+
+**A agregar:**
+- **Regla de divergencia:** si TimesFM contradice la dirección del TradeAgent con `quantile_spread_pct` bajo (alta confianza quant) → forzar WAIT.
+- **Regla de contexto macro:** si Tododeia marca el sector del símbolo como contrario con accuracy_30d > 60% → reducir sizing al 50% o WAIT (configurable).
 
 ---
 
-## E3 — Ejecución (plan de construcción por fases)
+## E3 — Ejecución (plan por fases)
 
-### F0 — Consolidación (esta entrega)
-- [x] Análisis de repos fuente y arquitectura.
-- [x] `README.md`, `SPEC.md`, `PENDIENTES.md` en este repo.
+### F0 — Consolidación ✅ (esta entrega)
+Análisis de los 4 repos, SPEC v1.1, backlog.
 
-### F1 — Etapa Señal (2 semanas)
-- Extender `SKILL.md`/Step 7 para escribir cada reporte también en Postgres (tabla `signals`) además de `output/history/`.
-- Microservicio `services/timesfm/` (FastAPI): endpoint `POST /forecast {symbol, horizon}` → usa OHLCV del exchange (ccxt) o del data mining de Superalgos; devuelve `forecast.json`.
-- n8n: workflow cron diario → dispara análisis Tododeia + forecast TimesFM → inserta señales.
+### F1 — Integración de señales (2-3 semanas)
+1. Postgres (Supabase): migrar TradingMY de SQLite + crear `macro_signals`/`forecasts` + pgvector.
+2. `services/timesfm/`: FastAPI `POST /forecast {symbol, horizon}`; datos vía yfinance/ccxt.
+3. Tododeia: extender Step 7 del SKILL.md para insertar `macro_context` en Postgres.
+4. TradingMY: inyectar ambos contextos en el prompt del TradeAgent; guardar FKs en `AgentDecision`.
+5. n8n: cron diario que corre Tododeia y verifica la frescura de señales (alerta si >24h sin señal macro — el sistema sigue operando sin ella, degradación elegante).
+6. Fix del bug `symbol_map` GBPUSD en config.
 
-### F2 — Decisión + Paper (3 semanas)
-- `services/decision/`: agente Claude API con debate bull/bear (2 pasadas) + síntesis; input = señales del día + memoria RAG; output = `decision.json`.
-- Superalgos headless en Docker (Railway/Hetzner) con data mining del exchange elegido.
-- Conector señal→Superalgos en modo **paper trading**.
-- Gate de salida: **≥ 4 semanas de paper** con métricas registradas.
+### F2 — Validación en paper/demo (≥ 4 semanas corriendo)
+1. Backtest de las estrategias activas con el motor existente (walk-forward, Monte Carlo) **con y sin** contexto macro/quant para medir si las señales nuevas realmente mejoran (A/B).
+2. Correr SimulatedBroker o MT5 demo con el pipeline completo.
+3. Gate de salida: ≥ 20 decisiones evaluadas; esperanza matemática > 0; el A/B muestra que el contexto no degrada.
 
-### F3 — Risk Engine (2 semanas, en paralelo con la corrida paper)
-- `services/risk/`: módulo puro con las 7 reglas, config YAML, 100% cubierto por tests unitarios.
-- Bot de Telegram (Capa 9): alertas de señal/rechazo y comando `/kill` manual.
+### F3 — Reglas de riesgo nuevas + crypto (en paralelo con F2)
+1. Implementar reglas de divergencia y contexto macro en RiskManager, con tests.
+2. `CCXTBroker` implementando `broker_base.py` (crypto spot, exchange a definir) → paper primero.
+3. (Alternativa a evaluar: usar el fork de freqtrade para crypto y dejar TradingMY solo forex/FTMO.)
 
-### F4 — Live con capital mínimo
-- API keys del exchange **solo-trade (sin retiros)**, en secrets del hosting (Capa 10).
-- Confirmación humana por Telegram para cada orden live.
-- Criterio de entrada: paper con win-rate y drawdown dentro de umbrales definidos al cierre de F2.
+### F4 — Live
+- MT5 real (FTMO) con `TRADINGMY_CONFIRM_LIVE=1` + aprobación manual Telegram los primeros 60 días.
+- Crypto live solo tras su propio ciclo de paper.
 
 ### F5 — Evolución (continuo) — ver E5
 
-### Estándares de código (E3)
-- Módulos respetan límites de capa: la señal no conoce al exchange; el riesgo no llama LLMs.
-- Todo intercambio entre módulos = JSON versionado (`"schema_version": 1`).
-- Manejo de errores localizado por módulo (el fallo de TimesFM no tumba a Tododeia; ya existe patrón `data_unavailable` en SKILL.md — se extiende).
+### Estándares E3
+- Límites de capa intactos: señal no conoce broker; riesgo no llama LLMs; todo intercambio JSON versionado (`schema_version`).
+- Fallos aislados: caída de TimesFM/Tododeia degrada a operación técnica pura (comportamiento actual de TradingMY), nunca bloquea el scheduler.
 
 ---
 
@@ -240,30 +215,31 @@ Además: `pgvector` para embeddings de reportes/noticias (memoria RAG del agente
 
 | Prueba | Criterio de aceptación |
 |---|---|
-| Unit tests Risk Engine | 100% de las reglas cubiertas; mutación de config YAML → comportamiento esperado |
-| Integración señal→orden | Señal sintética atraviesa las 4 etapas y produce orden paper en < 60s |
-| Webhooks (Capa 6) | Todos responden HTTP 200 bajo carga simulada (k6/artillery, 50 req/min) |
-| Precisión RAG | El agente de decisión cita ≥1 lección histórica relevante cuando existe |
-| Latencia IA | Análisis completo Tododeia < 10 min; forecast TimesFM < 30s |
-| Backtest | Estrategia base backtesteada en Superalgos sobre ≥ 12 meses de datos antes de paper |
-| Paper trading | ≥ 4 semanas, ≥ 20 señales evaluadas en `signal_outcomes` |
-| Kill-switch | Simulación de drawdown 3% detiene aperturas y alerta en < 1 min |
+| Suite existente TradingMY | 119+ tests siguen verdes tras cada integración |
+| Reglas de riesgo nuevas | Tests unitarios: divergencia y contexto macro con casos borde |
+| Integración señal→decisión | `macro_context` + `forecast` presentes en el prompt y trazables por FK en `AgentDecision` |
+| Webhooks/endpoints (Capa 6) | `/forecast` y endpoints dashboard responden 200 bajo carga (50 req/min) |
+| Latencia | Forecast TimesFM < 30s; tick completo del scheduler < 2 min |
+| A/B backtest | EM y drawdown con contexto ≥ sin contexto en ≥ 12 meses de datos |
+| Paper | ≥ 4 semanas, ≥ 20 decisiones, EM > 0 |
+| Kill-switch | Simulación de DD diario -4% detiene aperturas y alerta Telegram < 1 min |
+| Precisión RAG | Agente cita lección histórica relevante cuando existe (evaluación manual muestral) |
 
 ---
 
 ## E5 — Evolución
 
-- **Loop de accuracy (ya iniciado por Tododeia):** job semanal en n8n evalúa señales vencidas → llena `signal_outcomes` → recalcula accuracy por agente/sector → el reporte siguiente recibe ese contexto (el agente aprende qué sector viene fallando).
-- **Optimización de costos:** revisar logs (Capa 10) de tokens por corrida; mover agentes sectoriales a modelo más barato si la accuracy no se degrada; cachear research intradía.
-- **Refactor trimestral:** sync del fork de Superalgos con upstream; upgrade de TimesFM cuando salga versión nueva.
-- **Documentación viva:** cada cambio de esquema JSON incrementa `schema_version` y se documenta en `docs/`.
-- **Escalado:** multi-exchange y sectores no-crypto en ejecución solo después de 90 días de track record live positivo.
+- **Loop de accuracy doble:** (a) el que ya trae Tododeia (macro por sector) y (b) el de TradingMY (win rate real por hora/día/activo). Job semanal n8n cruza ambos: "el sector que Tododeia peor predice es X → bajar su peso en el prompt".
+- **Evolución del TradeAgent:** incorporar patrón debate bull/bear (referencia TradingAgents) si el A/B lo justifica.
+- **Costos:** medir tokens/corrida (logs Capa 10); evaluar modelo más económico para agentes sectoriales de Tododeia.
+- **Mantenimiento:** sync trimestral de forks con upstream (Superalgos, freqtrade, TradingAgents); upgrade de TimesFM.
+- **Escalado:** más símbolos/sesiones solo tras 90 días live con EM positiva.
 
 ---
 
-## Decisiones abiertas (requieren al owner)
+## Decisiones abiertas (owner)
 
-1. **Exchange para F2/F4** (Binance, Bybit, Kraken — según disponibilidad regional).
-2. **Capital inicial de F4.**
-3. **TradingMY:** fork a `ProyectoG007` para analizarlo e integrarlo al spec (P0 en PENDIENTES.md).
-4. **Hosting:** Railway (simple) vs. Hetzner (más barato para Superalgos 24/7 — recomendado por consumo de recursos del data mining).
+1. **Crypto:** ¿`CCXTBroker` dentro de TradingMY (recomendado, menos piezas) o freqtrade como segundo motor?
+2. **Exchange crypto** (Binance/Bybit/Kraken según región) y **capital inicial** de F4.
+3. **Hosting** del stack (TradingMY + TimesFM + n8n + Postgres): Hetzner recomendado; nota: `MT5Broker` requiere Windows o Wine para el paquete `MetaTrader5` — definir dónde corre esa pieza (VPS Windows es lo usual para FTMO).
+4. **Superalgos:** ¿mantener el fork como laboratorio o archivarlo hasta que crypto escale?

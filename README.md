@@ -15,14 +15,14 @@ Un sistema de trading robusto **no es un solo programa**: es una tubería de 4 e
 ```
 ┌────────────┐   ┌────────────┐   ┌────────────┐   ┌────────────┐
 │ 1. SEÑAL   │──▶│ 2. DECISIÓN│──▶│ 3. RIESGO  │──▶│ 4. EJECUCIÓN│
-│ (análisis) │   │ (estrategia)│   │ (determinista│  │ (exchange) │
-│ LLM + ML   │   │ LLM + reglas│   │  SIN LLM)  │   │ Superalgos/ │
-│            │   │             │   │            │   │ CCXT        │
+│ Tododeia + │   │ TradeAgent │   │ DrawdownGrd│   │ MT5 / Simu- │
+│ TimesFM    │   │ (Claude)   │   │ determinista│   │ lado / CCXT │
+│            │   │            │   │  SIN LLM   │   │             │
 └────────────┘   └────────────┘   └────────────┘   └────────────┘
-      ▲                                  │
-      │          feedback loop           ▼
+      ▲            └───────── TradingMY (núcleo) ─────────┘
+      │          feedback loop           │
       └──────── 5. MEMORIA + MÉTRICAS ◀──┘
-                (precisión histórica, PnL, logs)
+                (accuracy, PnL, Kelly, rachas, logs)
 ```
 
 **Regla de oro:** la capa de riesgo es código determinista (límites de posición, stop-loss, drawdown máximo, kill-switch). Un LLM jamás tiene la última palabra sobre una orden real.
@@ -31,11 +31,11 @@ Un sistema de trading robusto **no es un solo programa**: es una tubería de 4 e
 
 | Repositorio | Qué es | Qué se toma | Capa B'H |
 |---|---|---|---|
-| **maia-skill-trading** (este repo, base de [Hainrixz/maia-skill](https://github.com/Hainrixz/maia-skill)) | Skill Claude Code "Tododeia": 5 agentes (4 sectoriales + 1 estrategia), perfiles de riesgo, precisión histórica, dashboard Next.js bilingüe | **Etapa 1 (Señal)** completa: orquestación multi-agente, esquemas JSON de reporte, tracking de accuracy, dashboard | 7 (Agentes) + 8 (UI) |
-| **[ProyectoG007/Superalgos_trading](https://github.com/ProyectoG007/Superalgos_trading)** (fork de Superalgos v1.6.1) | Plataforma open-source completa: data mining de exchanges, diseñador visual de estrategias, backtesting, paper trading, ejecución live, Bitcoin-Factory (ML/TensorFlow) | **Etapas 3 y 4**: backtesting, paper/live trading vía exchanges, gestión de tareas 24/7. Se usa como *motor*, no como base del código propio | 1-4 (Infra, Datos, Ejecución) |
-| **[ProyectoG007/TradingAgents](https://github.com/ProyectoG007/TradingAgents)** (fork, ya en tu cuenta) | Framework multi-agente LLM: analistas fundamental/técnico/sentimiento, debate bull vs bear, trader, risk manager | **Etapa 2 (Decisión)**: patrón de debate adversarial y risk manager como referencia de diseño | 7 (Agentes) |
-| **[google-research/timesfm](https://github.com/google-research/timesfm)** (TimesFM, de tus capturas) | Modelo fundacional de Google para forecasting de series temporales, preentrenado, zero-shot | **Señal cuantitativa**: pronóstico de precios que complementa (y contrasta) el análisis LLM | 7 (Modelos) |
-| **devmv1979-star/TradingMY** | ⚠️ No accesible desde esta sesión (pertenece a otro dueño y no existe fork bajo `ProyectoG007`) | Pendiente — ver [PENDIENTES.md](PENDIENTES.md#p0) | — |
+| **[ProyectoG007/TradingMY_claude](https://github.com/ProyectoG007/TradingMY_claude)** (fork de devmv1979-star/TradingMY) | Sistema de trading algorítmico Python FTMO-compliant: TradeAgent con Claude, riesgo determinista (DrawdownGuard), brokers MT5/simulado, Telegram con aprobación manual, backtesting con Monte Carlo/Kelly, dashboard React, 119+ tests | **NÚCLEO OPERATIVO** — implementa las etapas 2, 3 y 4 completas. Se extiende, no se reconstruye | 2-4, 7-10 |
+| **maia-skill-trading** (este repo, base de [Hainrixz/maia-skill](https://github.com/Hainrixz/maia-skill)) | Skill Claude Code "Tododeia": 5 agentes (4 sectoriales + 1 estrategia), perfiles de riesgo, precisión histórica, dashboard Next.js bilingüe | **Etapa 1 (Señal macro)**: contexto multi-sector diario que alimenta al TradeAgent | 7 (Agentes) + 8 (UI) |
+| **[google-research/timesfm](https://github.com/google-research/timesfm)** (TimesFM, de tus capturas) | Modelo fundacional de Google para forecasting de series temporales, preentrenado, zero-shot | **Señal cuantitativa**: pronóstico con cuantiles que contrasta la decisión del LLM (regla de divergencia) | 7 (Modelos) |
+| **[ProyectoG007/Superalgos_trading](https://github.com/ProyectoG007/Superalgos_trading)** (fork de Superalgos v1.6.1) | Plataforma open-source completa: data mining de exchanges, backtesting, paper/live crypto, Bitcoin-Factory (ML/TensorFlow) | **Opcional/laboratorio**: data mining y backtesting crypto; para producción crypto se prefiere `CCXTBroker` en TradingMY | 1-4 (opcional) |
+| **[ProyectoG007/TradingAgents](https://github.com/ProyectoG007/TradingAgents)** (fork, ya en tu cuenta) | Framework multi-agente LLM: debate bull vs bear, trader, risk manager | Referencia de diseño para evolucionar el prompt del TradeAgent (fase E5) | 7 (Agentes) |
 
 ## Arquitectura: mapeo a las 10 capas B'H
 
@@ -54,11 +54,11 @@ Un sistema de trading robusto **no es un solo programa**: es una tubería de 4 e
 
 ## Fases de implementación (resumen)
 
-1. **F0 — Consolidación**: este repo como monorepo del sistema; specs y esquemas JSON congelados.
-2. **F1 — Señal**: Tododeia productivo con salida a Postgres + TimesFM como señal cuantitativa.
-3. **F2 — Decisión + Paper Trading**: agente de decisión (debate) → Superalgos en modo paper. **Mínimo 4 semanas en paper.**
-4. **F3 — Capa de Riesgo**: módulo determinista con límites duros y kill-switch. Auditada con tests.
-5. **F4 — Live (capital mínimo)**: ejecución real con posiciones chicas y confirmación por Telegram.
+1. **F0 — Consolidación** ✅: análisis de los 4 repos, SPEC v1.1 y backlog.
+2. **F1 — Integración de señales**: Postgres compartida, microservicio TimesFM, Tododeia persiste `macro_context`, TradeAgent recibe ambos contextos.
+3. **F2 — Validación**: backtest A/B (con y sin contexto) + **mínimo 4 semanas en paper/demo**.
+4. **F3 — Riesgo + crypto**: reglas de divergencia y contexto macro en el RiskManager; `CCXTBroker` para crypto spot.
+5. **F4 — Live (capital mínimo)**: MT5 real (FTMO) con confirmación por Telegram los primeros 60 días.
 6. **F5 — Evolución**: loop de feedback accuracy/PnL → ajuste de prompts y estrategias.
 
 El detalle de cada fase, esquemas de datos y criterios de aceptación está en [SPEC.md](SPEC.md).

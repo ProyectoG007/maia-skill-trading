@@ -1,60 +1,64 @@
 # PENDIENTES — Sistema de Trading MAIA
 
-Backlog priorizado. Referencia técnica: [SPEC.md](SPEC.md).
+Backlog priorizado. Referencia técnica: [SPEC.md](SPEC.md) (v1.1).
 Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente fase · **P3** = mejora futura.
+
+> Nota: TradingMY tiene su propio backlog interno en `TradingMY_claude/pendientes.md` (75/76 ítems completados). Este archivo cubre el **sistema integrado**.
 
 ---
 
 ## P0 — Bloqueantes / decisiones del owner
 
-- [ ] <a id="p0"></a>**Fork de TradingMY**: `devmv1979-star/TradingMY` no fue accesible desde la sesión (repo de otro dueño, sin fork bajo `ProyectoG007`). Hacer fork a `ProyectoG007/TradingMY` (o iniciar una sesión con ese repo como fuente) para analizarlo e incorporar lo que aporte al SPEC.
-- [ ] **Elegir exchange** para paper/live (Binance, Bybit o Kraken según disponibilidad regional) — bloquea F2.
-- [ ] **Definir capital inicial** para F4 (live) — no bloquea F1-F3.
-- [ ] **Elegir hosting** (Railway vs. Hetzner; recomendado Hetzner para Superalgos 24/7).
+- [x] ~~Fork de TradingMY~~ → hecho: `ProyectoG007/TradingMY_claude` (analizado en SPEC v1.1).
+- [ ] **Decidir motor crypto:** `CCXTBroker` dentro de TradingMY (recomendado) vs. fork de `freqtrade` como segundo motor.
+- [ ] **Elegir exchange crypto** (Binance, Bybit o Kraken según disponibilidad regional).
+- [ ] **Definir capital inicial** para fase live (no bloquea F1-F3).
+- [ ] **Hosting:** Hetzner (recomendado) para TradingMY+TimesFM+n8n+Postgres; definir VPS Windows/Wine para `MT5Broker` (el paquete `MetaTrader5` no corre en Linux nativo).
 
-## P1 — Fase F1: Etapa Señal (2 semanas)
+## P1 — Fase F1: Integración de señales (2-3 semanas)
 
-- [ ] Crear proyecto Postgres (Supabase) con las tablas `signals`, `decisions`, `orders`, `signal_outcomes` del SPEC + extensión `pgvector`.
-- [ ] Modificar `SKILL.md` (Step 7): además de `output/history/`, insertar el reporte en la tabla `signals` (una fila por asset con recomendación).
-- [ ] Crear `services/timesfm/`: microservicio FastAPI con endpoint `POST /forecast` usando `timesfm` de Hugging Face (`google/timesfm-2.0-500m-pytorch`) + OHLCV vía ccxt.
-- [ ] Montar n8n y crear workflow cron diario: análisis Tododeia + forecast TimesFM → Postgres.
-- [ ] Definir universo v1 de símbolos (BTC/USDT, ETH/USDT + top picks dinámicos de Tododeia).
+- [ ] 🐛 **Fix bug `symbol_map` en `TradingMY_claude/config.yaml`**: `"GBPUSD=X": "EURUSD"` debe ser `"GBPUSD"` — hoy una orden de GBPUSD se ejecutaría sobre EURUSD en MT5.
+- [ ] Crear proyecto Postgres (Supabase) + extensión `pgvector`.
+- [ ] Migrar TradingMY de SQLite a Postgres (SQLModel: cambiar connection string + migraciones).
+- [ ] Crear tablas `macro_signals` y `forecasts` con FK desde `AgentDecision` (trazabilidad señal→decisión→orden).
+- [ ] Crear `services/timesfm/`: FastAPI `POST /forecast` con `timesfm` de HF (`google/timesfm-2.0-500m-pytorch`) + OHLCV vía yfinance/ccxt.
+- [ ] Extender Step 7 de `SKILL.md` (Tododeia): insertar `macro_context` en Postgres además de `output/history/`.
+- [ ] Inyectar `macro_context` + `forecast` en `USER_PROMPT_TEMPLATE` del TradeAgent (`src/agents/prompts.py`).
+- [ ] Montar n8n: cron diario de Tododeia + alerta si la señal macro tiene >24h (degradación elegante: el sistema opera igual sin ella).
 
-## P2 — Fases F2/F3: Decisión, Paper Trading y Riesgo
+## P2 — Fases F2/F3: Validación y riesgo
 
-- [ ] Crear `services/decision/`: agente de decisión (Claude API) con patrón debate bull/bear tomado de `ProyectoG007/TradingAgents` como referencia.
-- [ ] Memoria RAG (pgvector): indexar reportes históricos y lecciones de trades cerrados; el agente de decisión consulta antes de decidir.
-- [ ] Desplegar Superalgos headless en Docker; configurar data mining del exchange elegido.
-- [ ] Conector señal → Superalgos (Trading Signals / webhook) en modo **paper**.
-- [ ] Crear `services/risk/`: Risk Engine determinista con las 7 reglas del SPEC, config YAML y tests unitarios al 100%.
-- [ ] Bot de Telegram: alertas de señal, veredictos de riesgo, comando `/kill`.
-- [ ] Backtest de la estrategia base en Superalgos con ≥ 12 meses de datos.
-- [ ] Correr **mínimo 4 semanas de paper trading** con ≥ 20 señales evaluadas.
-- [ ] Job semanal n8n de evaluación de señales vencidas → `signal_outcomes` (loop de accuracy).
+- [ ] Backtest A/B (con y sin contexto macro/quant) sobre ≥ 12 meses: esperanza matemática y drawdown no deben degradarse.
+- [ ] Correr paper/demo (SimulatedBroker o MT5 demo) ≥ 4 semanas con ≥ 20 decisiones evaluadas.
+- [ ] Implementar en RiskManager la **regla de divergencia** (TimesFM contradice al agente con spread de cuantiles bajo → WAIT) + tests.
+- [ ] Implementar la **regla de contexto macro** (sector contrario con accuracy > 60% → sizing 50% o WAIT) + tests.
+- [ ] Implementar `CCXTBroker` sobre `broker_base.py` (si se decide esa vía) → paper crypto.
+- [ ] Job semanal n8n: cruzar accuracy macro (Tododeia) con win rate real (TradingMY) y ajustar pesos del prompt.
+- [ ] Verificar que la suite existente de TradingMY (119+ tests) siga verde tras cada integración.
 
-## P2 — Dashboard (Capa 8)
+## P2 — Dashboards (Capa 8)
 
-- [ ] Extender el dashboard Next.js existente: vista de posiciones abiertas, PnL acumulado, historial de órdenes y veredictos de riesgo.
-- [ ] Gráfico de accuracy por agente/sector a lo largo del tiempo (dato ya disponible en `signal_outcomes`).
-- [ ] Leer datos desde Postgres en lugar de solo `report.json` estático.
+- [ ] Dashboard TradingMY: mostrar el contexto macro y el forecast que influyeron en cada decisión (página Decisiones).
+- [ ] Dashboard Tododeia (Next.js): leer accuracy desde Postgres; agregar vista "qué pasó con mis señales" (macro_signals → resultado real).
+- [ ] Unificar acceso: decidir si ambos dashboards conviven o se consolida en uno.
 
-## P3 — Fases F4/F5: Live y Evolución
+## P3 — Fases F4/F5: Live y evolución
 
-- [ ] API keys de exchange **solo-trade (sin retiro)** en secrets del hosting; nunca en el repo.
-- [ ] Flujo de confirmación humana por Telegram para órdenes live (obligatorio los primeros 60 días).
-- [ ] Kill-switch automático por drawdown diario > 3% (probado con simulación).
-- [ ] Optimización de costos de tokens: evaluar modelo más económico para agentes sectoriales.
-- [ ] Sync trimestral del fork `Superalgos_trading` con upstream (`Superalgos/Superalgos`).
-- [ ] Evaluar `TradingAgents-CN` por si aporta mejoras sobre el TradingAgents original.
-- [ ] Multi-exchange y ejecución en sectores no-crypto (solo tras 90 días live positivos).
+- [ ] MT5 real (FTMO): `TRADINGMY_CONFIRM_LIVE=1` + aprobación manual Telegram obligatoria los primeros 60 días.
+- [ ] Crypto live solo tras ciclo propio de paper con EM > 0.
+- [ ] Evaluar patrón debate bull/bear (referencia `ProyectoG007/TradingAgents`) para el TradeAgent, con A/B.
+- [ ] Memoria RAG (pgvector): indexar lecciones de trades cerrados y reportes macro; el TradeAgent consulta antes de decidir.
+- [ ] Optimización de costos de tokens (agentes sectoriales de Tododeia a modelo más económico si accuracy no se degrada).
+- [ ] Sync trimestral de forks con upstream: TradingMY, Superalgos, freqtrade, TradingAgents.
+- [ ] Decidir destino del fork Superalgos: laboratorio de data mining crypto o archivo.
 
-## Deuda técnica / higiene del repo
+## Deuda técnica / higiene
 
-- [ ] El `install.sh` y el README de Tododeia apuntan a `Hainrixz/maia-skill`; actualizar referencias al fork propio si se divergen.
-- [ ] Agregar CI (GitHub Actions): lint + tests del dashboard y de los futuros `services/`.
-- [ ] `.env.example` con todas las variables (DB, Claude API, exchange, Telegram) documentadas.
-- [ ] Documentar en `docs/` el procedimiento de despliegue de Superalgos headless.
+- [ ] `install.sh` y docs de Tododeia apuntan a `Hainrixz/maia-skill`; actualizar si el fork diverge.
+- [ ] CI (GitHub Actions) en ambos repos: lint + tests (TradingMY ya tiene pytest; falta pipeline).
+- [ ] `.env.example` unificado del sistema (DB, Claude API, exchange, Telegram, MT5) — TradingMY ya trae uno propio, extenderlo.
+- [ ] Documentar en `docs/` el despliegue completo del stack (Hetzner + VPS MT5).
 
 ---
 
-*Última actualización: 2026-07-15 — generado junto con SPEC.md v1.0.*
+*Última actualización: 2026-07-15 — SPEC v1.1 (incorpora análisis de TradingMY).*
