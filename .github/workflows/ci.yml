@@ -1,0 +1,33 @@
+# MAIA Trading System — CI: tests de los scripts de integración.
+# El servicio TimesFM no se testea acá (requiere el checkpoint de ~2GB);
+# su build se valida en el deploy (services/timesfm/Dockerfile).
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Tests
+        run: python -m pytest tests/ -v --tb=short
+
+      - name: Validar JSON de workflows n8n
+        run: |
+          for f in docs/n8n/*.json; do
+            python -c "import json,sys; json.load(open('$f')); print('OK $f')"
+          done
