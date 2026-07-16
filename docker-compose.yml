@@ -1,0 +1,98 @@
+# MAIA Trading System — stack integrado 24/7
+# ════════════════════════════════════════════════════════════════════
+# Orquesta: TradingMY (API + scheduler) + TimesFM + n8n.
+# Postgres NO va acá: se usa Supabase (proyecto "maia-trading") vía
+# DATABASE_URL en .env. Ver docs/deploy/railway.md para el deploy real.
+#
+# Layout esperado (clones hermanos):
+#   ./                    → este repo (maia-skill-trading)
+#   ../TradingMY_claude/  → fork de TradingMY
+#
+# Uso:
+#   cp .env.example .env   # completar DATABASE_URL, ANTHROPIC_API_KEY
+#   docker compose up -d
+#
+# NOTA: MT5Broker no corre en Linux (paquete MetaTrader5 = Windows).
+# Este stack corre TradingMY con SimulatedBroker/CCXTBroker; el broker
+# MT5 real requiere el VPS Windows (pendiente P0).
+
+services:
+  # ── Capa quant: forecast TimesFM ─────────────────────────────────
+  timesfm:
+    build: ./services/timesfm
+    container_name: maia-timesfm
+    restart: unless-stopped
+    ports:
+      - "8900:8900"
+    volumes:
+      - timesfm_cache:/root/.cache/huggingface
+    # El primer arranque tarda varios minutos (descarga ~2GB de HF).
+
+  # ── TradingMY: dashboard API ─────────────────────────────────────
+  tradingmy-api:
+    build:
+      context: ../TradingMY_claude
+      dockerfile: docker/Dockerfile.api
+    container_name: maia-tradingmy-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - MAIA_CONTEXT_DIR=/shared
+    volumes:
+      - maia_context:/shared
+      - tradingmy_data:/app/data
+      - tradingmy_logs:/app/logs
+    command: uvicorn dashboard.api.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── TradingMY: scheduler (paper/demo hasta pasar F2/F3) ──────────
+  tradingmy-scheduler:
+    build:
+      context: ../TradingMY_claude
+      dockerfile: docker/Dockerfile.api
+    container_name: maia-tradingmy-scheduler
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - MAIA_CONTEXT_DIR=/shared
+    volumes:
+      - maia_context:/shared
+      - tradingmy_data:/app/data
+      - tradingmy_logs:/app/logs
+    command: python main.py --mode live --demo true
+    depends_on:
+      tradingmy-api:
+        condition: service_healthy
+
+  # ── Orquestación: n8n (señal macro diaria + forecasts) ───────────
+  # Workflow importable: docs/n8n/senal-macro-diaria.json
+  # Pendiente P1: instalar Claude Code CLI + credenciales en este host
+  # para que el nodo "Ejecutar Tododeia" funcione en producción.
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: maia-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=UTC
+      - N8N_DIAGNOSTICS_ENABLED=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - maia_context:/shared
+
+volumes:
+  maia_context:    # macro_context.json + forecast_<SYMBOL>.json (Capa 6)
+  timesfm_cache:   # checkpoint HF (~2GB), evita re-descarga
+  tradingmy_data:
+  tradingmy_logs:
+  n8n_data:

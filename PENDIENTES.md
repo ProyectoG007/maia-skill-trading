@@ -46,6 +46,8 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 
 ## P2 — Dashboards (Capa 8)
 
+- [x] **Dashboard Tododeia publicado en Vercel**: https://tododeia-dashboard.vercel.app (Next.js, datos estáticos del último reporte; falta conectarlo a Postgres, ver ítem abajo).
+- [x] **Dashboard TradingMY publicado en Vercel**: https://tradingmy-dashboard.vercel.app (UI Vite/React). La API/WS ahora es configurable vía `VITE_API_URL`/`VITE_WS_URL` (commit en `TradingMY_claude`); hasta que la API viva en Railway, la UI muestra "desconectado" — es esperado. Al desplegar la API: setear `VITE_API_URL` en Vercel y redeploy (ver `docs/deploy/railway.md` §7).
 - [ ] Dashboard TradingMY: mostrar el contexto macro y el forecast que influyeron en cada decisión (página Decisiones).
 - [ ] Dashboard Tododeia (Next.js): leer accuracy desde Postgres; agregar vista "qué pasó con mis señales" (macro_signals → resultado real).
 - [ ] Unificar acceso: decidir si ambos dashboards conviven o se consolida en uno.
@@ -69,4 +71,4 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 
 ---
 
-*Última actualización: 2026-07-15 — SPEC v1.2 (F1 y F3 en curso: contexto externo + reglas de riesgo implementadas y testeadas; falta infraestructura real).*
+*Última actualización: 2026-07-16 — dashboards publicados en Vercel; `docker-compose.yml` + `docs/deploy/railway.md` + `services/timesfm/Dockerfile` creados (falta cuenta/proyecto Railway, paso manual del owner).*
