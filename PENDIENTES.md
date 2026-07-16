@@ -65,7 +65,7 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 ## Deuda técnica / higiene
 
 - [ ] `install.sh` y docs de Tododeia apuntan a `Hainrixz/maia-skill`; actualizar si el fork diverge.
-- [x] CI (GitHub Actions) en ambos repos — hecho: `.github/workflows/ci.yml` en cada repo (pytest en push/PR; TradingMY excluye MetaTrader5 por ser solo-Windows; maia además valida los JSON de n8n). Lint queda para después (no hay config de ruff/flake8 aún; agregarlo implicaría limpiar el código existente primero).
+- [x] CI (GitHub Actions) en ambos repos — hecho: `.github/workflows/ci.yml` en cada repo (pytest en push/PR; TradingMY excluye MetaTrader5 por ser solo-Windows; maia además valida los JSON de n8n). **Verificado:** maia corre en verde. **Paso manual tuyo:** en `TradingMY_claude` el job muere al instante sin runner porque el repo es privado y los minutos de Actions requieren facturación/límite de gasto habilitado (Settings → Billing) — o hacer el repo público. La suite igual está validada localmente (229/229). Lint queda para después (no hay config de ruff aún).
 - [ ] `.env.example` unificado del sistema (DB, Claude API, exchange, Telegram, MT5) — TradingMY ya trae uno propio, extenderlo.
 - [ ] Documentar en `docs/` el despliegue completo del stack (Hetzner + VPS MT5).
 
