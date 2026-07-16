@@ -14,7 +14,7 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 - [x] **Decidir motor crypto:** confirmado — `CCXTBroker` dentro de TradingMY. Ver ítem en P2 (implementado esta noche).
 - [ ] **Elegir exchange crypto** (Binance, Bybit o Kraken según disponibilidad regional) — el `CCXTBroker` es agnóstico al exchange (usa la librería `ccxt`), pero corre por default contra el testnet de Binance hasta que definas cuál preferís.
 - [ ] **Definir capital inicial** para fase live (no bloquea F1-F3).
-- [x] **Hosting:** confirmado — Railway para el stack 24/7 (TradingMY + TimesFM + n8n); ver `docker-compose.yml` y `docs/deploy/railway.md`. Falta que crees la cuenta/proyecto en Railway y me pases el token, o lo hagas vos siguiendo la guía. VPS Windows para `MT5Broker` sigue pendiente (el paquete `MetaTrader5` no corre en Linux nativo).
+- [x] **Hosting:** hecho — stack 24/7 provisionado en Railway (proyecto `maia-trading`): `tradingmy-api` (https://tradingmy-api-production.up.railway.app, healthy), `tradingmy-scheduler` (corriendo en demo, descargando datos), `timesfm` (interno, con volumen para el checkpoint) y `n8n` (https://n8n-production-f32e.up.railway.app). Dashboard de Vercel conectado a la API (CORS + `VITE_API_URL` horneada). **Faltan 3 pasos manuales tuyos:** (1) `DATABASE_URL` y `ANTHROPIC_API_KEY` como variables en `tradingmy-api` y `tradingmy-scheduler`; (2) abrir n8n YA y crear la cuenta owner (la primera visita define el dueño — está público hasta entonces) e importar los dos workflows de `docs/n8n/`; (3) VPS Windows para `MT5Broker` sigue pendiente (el paquete `MetaTrader5` no corre en Linux nativo).
 
 ## P1 — Fase F1: Integración de señales (2-3 semanas)
 
@@ -71,4 +71,4 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 
 ---
 
-*Última actualización: 2026-07-16 — dashboards publicados en Vercel; `docker-compose.yml` + `docs/deploy/railway.md` + `services/timesfm/Dockerfile` creados (falta cuenta/proyecto Railway, paso manual del owner).*
+*Última actualización: 2026-07-16 — stack 24/7 en Railway provisionado y verde (api + scheduler + timesfm + n8n); dashboard TradingMY en Vercel conectado a la API real.*
