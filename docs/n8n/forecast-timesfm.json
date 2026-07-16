@@ -1,0 +1,73 @@
+{
+  "name": "MAIA - Forecast TimesFM por simbolo",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "0 */4 * * *" }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron - cada 4h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "notes": "TradingMY considera fresco un forecast de < 6h (MAX_AGE_HOURS_FORECAST). Cada 4h deja margen."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Un item por símbolo a pronosticar (formato yfinance).\n// Mantener alineado con assets.symbols de TradingMY_claude/config.yaml.\nconst symbols = ['EURUSD=X', 'GBPUSD=X', 'SPY'];\nreturn symbols.map((symbol) => ({ json: { symbol } }));"
+      },
+      "id": "symbols",
+      "name": "Simbolos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "command": "curl -sf -X POST \"${TIMESFM_URL:-http://localhost:8900}/forecast\" -H 'Content-Type: application/json' -d '{\"symbol\": \"{{ $json.symbol }}\", \"horizon_hours\": 24}' | python3 /opt/maia-skill-trading/scripts/persist_forecast.py"
+      },
+      "id": "forecast-persist",
+      "name": "Forecast + persistir",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "notes": "Escribe forecast_<SYMBOL>.json en MAIA_CONTEXT_DIR y, con DATABASE_URL seteada, inserta en la tabla forecasts agregando forecast_id al archivo (trazabilidad). En Docker Compose el servicio se llama 'timesfm' -> setear TIMESFM_URL=http://timesfm:8900."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{$json.exitCode}}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-failure",
+      "name": "Fallo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "notes": "Colgar aca la alerta real (Telegram/email) — mismo pendiente que el workflow de Tododeia."
+    }
+  ],
+  "connections": {
+    "Cron - cada 4h": {
+      "main": [[{ "node": "Simbolos", "type": "main", "index": 0 }]]
+    },
+    "Simbolos": {
+      "main": [[{ "node": "Forecast + persistir", "type": "main", "index": 0 }]]
+    },
+    "Forecast + persistir": {
+      "main": [[{ "node": "Fallo?", "type": "main", "index": 0 }]]
+    }
+  }
+}

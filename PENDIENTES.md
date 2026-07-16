@@ -31,7 +31,7 @@ Convención: **P0** = bloqueante · **P1** = fase actual · **P2** = siguiente f
 - [ ] **Completar la conexión real**: falta que copies la contraseña de la base desde el dashboard de Supabase (Project Settings → Database) a tu `.env` — la API no la expone por seguridad, es el único paso manual. Instrucciones en `.env.example` de ambos repos.
 - [x] FK desde `AgentDecision` (TradingMY) hacia `macro_signals`/`forecasts` — hecho: columnas `macro_signal_id`/`forecast_id` (uuid blando, nullable) aplicadas en Supabase y en la migración v4 de TradingMY. `persist_macro_context.py` ahora escribe los ids insertados en `macro_context.json` (`signal_ids`), y el scheduler los guarda en cada decisión vía `load_context_refs()`.
 - [ ] Instalar `services/timesfm/` en un host con GPU/CPU suficiente y probar la descarga real del checkpoint (~2GB) — no se pudo ejecutar en este sandbox (sin `timesfm`/`torch` instalables offline).
-- [ ] Workflow n8n para el forecast de TimesFM por símbolo (llamar `/forecast` → escribir `forecast_<SYMBOL>.json`) — falta, solo está el de Tododeia.
+- [x] Workflow n8n para el forecast de TimesFM por símbolo — hecho: `docs/n8n/forecast-timesfm.json` (cron cada 4h → `/forecast` por símbolo → `scripts/persist_forecast.py`, que escribe `forecast_<SYMBOL>.json` + inserta en `forecasts` con `forecast_id` en el archivo si hay `DATABASE_URL`).
 - [ ] Instalar Claude Code CLI + credenciales en el host de n8n para que el nodo "Ejecutar Tododeia" funcione en producción.
 
 ## P2 — Fases F2/F3: Validación y riesgo
