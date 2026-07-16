@@ -95,6 +95,21 @@ create table if not exists signal_outcomes (
 );
 create index if not exists idx_signal_outcomes_signal on signal_outcomes (signal_id);
 
+-- ── Trazabilidad en tablas de TradingMY ──────────────────────────
+-- La tabla `agentdecision` la crea TradingMY (SQLModel) en esta misma
+-- base. Estas columnas vinculan cada decisión del TradeAgent con la
+-- señal macro (Tododeia) y el forecast (TimesFM) que la influenciaron.
+-- Se dejan como uuid "blando" (sin constraint FK) porque TradingMY
+-- también corre contra SQLite local donde macro_signals no existe.
+-- Espejo de la migración v4 de TradingMY (dashboard/api/migrations.py).
+do $$
+begin
+  if to_regclass('public.agentdecision') is not null then
+    alter table agentdecision add column if not exists macro_signal_id varchar;
+    alter table agentdecision add column if not exists forecast_id varchar;
+  end if;
+end $$;
+
 -- ── Memoria RAG (Capa 5) — embeddings de reportes y lecciones ────
 -- Dimensión 1536 asume embeddings tipo text-embedding-3-small/OpenAI;
 -- ajustar si se usa otro proveedor.

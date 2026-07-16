@@ -26,8 +26,17 @@ from pathlib import Path
 from typing import Any, Dict
 
 
-def build_macro_context(report: Dict[str, Any]) -> Dict[str, Any]:
-    """Reduce el REPORT_DATA completo de Tododeia al contrato macro_context.json."""
+def build_macro_context(
+    report: Dict[str, Any],
+    signal_ids: Dict[str, Dict[str, str]] | None = None,
+) -> Dict[str, Any]:
+    """Reduce el REPORT_DATA completo de Tododeia al contrato macro_context.json.
+
+    signal_ids: {sector: {symbol: uuid}} de las filas insertadas en
+    macro_signals — permite a TradingMY vincular cada AgentDecision con la
+    señal que la influenció (trazabilidad señal→decisión). Ausente si no
+    hay DATABASE_URL.
+    """
     sectors = {}
     for sector_name, sector_data in (report.get("sectors") or {}).items():
         sectors[sector_name] = {
@@ -43,7 +52,7 @@ def build_macro_context(report: Dict[str, Any]) -> Dict[str, Any]:
         for sector_name in sectors:
             accuracy[sector_name] = accuracy_ratio
 
-    return {
+    context = {
         "schema_version": 1,
         "source": "tododeia",
         "generated_at": report.get("generated_at"),
@@ -53,6 +62,9 @@ def build_macro_context(report: Dict[str, Any]) -> Dict[str, Any]:
         "warnings": report.get("warnings", []),
         "accuracy_last_30d": accuracy,
     }
+    if signal_ids:
+        context["signal_ids"] = signal_ids
+    return context
 
 
 def write_context_file(macro_context: Dict[str, Any]) -> Path:
@@ -64,11 +76,13 @@ def write_context_file(macro_context: Dict[str, Any]) -> Path:
     return out_path
 
 
-def write_to_postgres(report: Dict[str, Any]) -> int:
-    """Inserta una fila por asset en macro_signals. No-op si DATABASE_URL no está seteada."""
+def write_to_postgres(report: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+    """Inserta una fila por asset en macro_signals y devuelve los ids
+    insertados como {sector: {symbol: uuid}}. Vacío si DATABASE_URL no
+    está seteada (no-op) o si no había assets."""
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
-        return 0
+        return {}
 
     import psycopg2  # import diferido: solo se necesita si hay DB configurada
     import psycopg2.extras
@@ -87,23 +101,28 @@ def write_to_postgres(report: Dict[str, Any]) -> int:
             ))
 
     if not rows:
-        return 0
+        return {}
 
+    signal_ids: Dict[str, Dict[str, str]] = {}
     conn = psycopg2.connect(database_url)
     try:
         with conn, conn.cursor() as cur:
-            psycopg2.extras.execute_values(
+            inserted = psycopg2.extras.execute_values(
                 cur,
                 """
                 insert into macro_signals
                     (sector, symbol, outlook, recommendation, confidence, reasoning, raw_payload)
                 values %s
+                returning id, sector, symbol
                 """,
                 rows,
+                fetch=True,
             )
+            for row_id, sector, symbol in inserted:
+                signal_ids.setdefault(sector, {})[symbol] = str(row_id)
     finally:
         conn.close()
-    return len(rows)
+    return signal_ids
 
 
 def main() -> None:
@@ -115,13 +134,17 @@ def main() -> None:
     with open(report_path, encoding="utf-8") as f:
         report = json.load(f)
 
-    macro_context = build_macro_context(report)
+    # Primero Postgres (si hay), para incluir los ids en el archivo — es lo
+    # que le permite a TradingMY trazar decisión → señal macro.
+    signal_ids = write_to_postgres(report)
+
+    macro_context = build_macro_context(report, signal_ids=signal_ids)
     out_path = write_context_file(macro_context)
     print(f"macro_context.json escrito en: {out_path}")
 
-    inserted = write_to_postgres(report)
-    if inserted:
-        print(f"{inserted} fila(s) insertada(s) en macro_signals (Postgres)")
+    if signal_ids:
+        total = sum(len(v) for v in signal_ids.values())
+        print(f"{total} fila(s) insertada(s) en macro_signals (Postgres) — ids incluidos en el archivo")
     else:
         print("DATABASE_URL no configurada — se omitió la escritura en Postgres (solo archivo)")
 

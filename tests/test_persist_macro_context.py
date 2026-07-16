@@ -100,4 +100,22 @@ class TestWriteContextFile:
 class TestWriteToPostgres:
     def test_noop_without_database_url(self, monkeypatch):
         monkeypatch.delenv("DATABASE_URL", raising=False)
-        assert write_to_postgres(SAMPLE_REPORT) == 0
+        assert write_to_postgres(SAMPLE_REPORT) == {}
+
+
+class TestSignalIds:
+    """Trazabilidad: los ids de macro_signals viajan en el archivo."""
+
+    IDS = {"forex": {"EURUSD": "11111111-1111-1111-1111-111111111111"}}
+
+    def test_signal_ids_included_when_present(self):
+        result = build_macro_context(SAMPLE_REPORT, signal_ids=self.IDS)
+        assert result["signal_ids"]["forex"]["EURUSD"].startswith("11111111")
+
+    def test_signal_ids_absent_without_db(self):
+        result = build_macro_context(SAMPLE_REPORT, signal_ids={})
+        assert "signal_ids" not in result
+
+    def test_signal_ids_absent_by_default(self):
+        result = build_macro_context(SAMPLE_REPORT)
+        assert "signal_ids" not in result
