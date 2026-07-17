@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Radar — Medidor de velocidad v3</title>
+<style>
+  :root{
+    --bg:#10151c; --panel:#161d27; --line:#243141;
+    --amber:#ffb454; --amber-dim:#8a6733;
+    --cyan:#5fd4c4; --text:#c7d3e0; --muted:#5f7085;
+    --danger:#ff6b5e; --green:#7ee08a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    min-height:100vh; padding:14px; max-width:520px; margin:0 auto;
+    -webkit-user-select:none; user-select:none;
+  }
+  header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+  header h1{font-size:13px;letter-spacing:.25em;color:var(--amber);font-weight:600}
+  #status{font-size:10px;color:var(--muted);letter-spacing:.1em}
+  #status.on{color:var(--cyan)}
+
+  .videoWrap{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;touch-action:none;min-height:120px}
+  video{width:100%;display:block}
+  #overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  /* Lectura principal: velocidad del cruce ROI */
+  .readout{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:12px 10px 10px;margin-top:10px;text-align:center;
+  }
+  .readout .lbl{font-size:9px;letter-spacing:.2em;color:var(--muted)}
+  #roiSpeed{font-size:56px;font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums;line-height:1.05;text-shadow:0 0 18px rgba(255,180,84,.25)}
+  #roiUnit{font-size:14px;color:var(--amber-dim);margin-left:6px}
+  #roiState{font-size:10px;letter-spacing:.15em;margin-top:6px;color:var(--muted)}
+  #roiState.armed{color:var(--cyan)}
+  #roiState.timing{color:var(--amber)}
+  #roiState.done{color:var(--green)}
+
+  .trackBar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{flex:none;padding:7px 14px;border:none;border-radius:0;background:var(--panel);font-size:10px;letter-spacing:.1em}
+  .seg button.active{background:var(--cyan);color:#0a1f1c;font-weight:700}
+  #ptCount{font-size:10px;color:var(--muted);letter-spacing:.08em}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:8px}
+  .cell{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 8px}
+  .cell .lbl{font-size:8px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  .cell .val{font-size:15px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .cell .val.cy{color:var(--cyan)}
+
+  #chart{width:100%;height:80px;background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-top:8px;display:block}
+
+  .calib{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px}
+  .calib label{font-size:10px;color:var(--muted);letter-spacing:.1em;display:block;margin-bottom:6px}
+  .calRow{display:flex;gap:8px;align-items:center}
+  input[type=number]{
+    flex:1;background:var(--bg);border:1px solid var(--line);border-radius:6px;
+    color:var(--text);padding:8px;font-family:inherit;font-size:14px;min-width:0;
+  }
+  select{background:var(--bg);border:1px solid var(--line);border-radius:6px;color:var(--text);padding:8px;font-family:inherit;font-size:12px}
+  #roiDist{font-size:11px;color:var(--cyan);margin-top:6px}
+
+  .btns{display:flex;gap:8px;margin-top:10px}
+  button{
+    flex:1;padding:12px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--text);font-family:inherit;font-size:12px;
+    letter-spacing:.12em;cursor:pointer;
+  }
+  button.primary{background:var(--amber);color:#1a1206;border-color:var(--amber);font-weight:700}
+  button:active{opacity:.75}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .hint{font-size:10px;color:var(--muted);margin-top:10px;line-height:1.5}
+  .hint b{color:var(--cyan);font-weight:400}
+</style>
+</head>
+<body>
+<header>
+  <h1>◉ RADAR v3</h1>
+  <span id="status">CÁMARA APAGADA</span>
+</header>
+
+<div class="videoWrap" id="videoWrap">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div class="trackBar">
+  <div class="seg">
+    <button id="modeDiff" data-mode="diff">DIFF</button>
+    <button id="modeFlow" data-mode="flow" class="active">FLOW</button>
+  </div>
+  <span id="ptCount">— pts</span>
+</div>
+
+<div class="readout">
+  <div class="lbl">VELOCIDAD DE CRUCE A → B</div>
+  <div><span id="roiSpeed">—</span><span id="roiUnit">cm/s</span></div>
+  <div id="roiState">ESPERANDO OBJETO</div>
+</div>
+
+<div class="grid">
+  <div class="cell"><div class="lbl">Continua</div><div class="val" id="speed">0.0</div></div>
+  <div class="cell"><div class="lbl">Máx cruce</div><div class="val" id="max">—</div></div>
+  <div class="cell"><div class="lbl">Tiempo</div><div class="val cy" id="crossT">—</div></div>
+  <div class="cell"><div class="lbl">FPS</div><div class="val" id="fps">0</div></div>
+</div>
+
+<canvas id="chart"></canvas>
+
+<div class="calib">
+  <label>CALIBRACIÓN — ancho real del campo visible completo</label>
+  <div class="calRow">
+    <input type="number" id="fov" value="50" min="1" step="1">
+    <select id="unitSel">
+      <option value="cm">cm → cm/s</option>
+      <option value="m">m → km/h</option>
+    </select>
+  </div>
+  <div id="roiDist">Distancia A–B: —</div>
+  <button id="calibBtn" style="width:100%;margin-top:8px">📐 AUTO-CALIBRAR CON OBJETO</button>
+  <div id="calibPanel" hidden>
+    <label style="margin-top:10px">OBJETO DE REFERENCIA — ponelo en el plano donde va a pasar lo que medís</label>
+    <div class="calRow">
+      <select id="refSel" style="flex:1">
+        <option value="29.7">Hoja A4 apaisada — 29,7 cm</option>
+        <option value="21.0">Hoja A4 vertical — 21,0 cm</option>
+        <option value="8.56">Tarjeta de crédito — 8,56 cm</option>
+        <option value="12.0">CD / DVD — 12,0 cm</option>
+        <option value="custom">Otro…</option>
+      </select>
+      <input type="number" id="refCustom" value="10" min="0.1" step="0.1" hidden style="max-width:90px" title="tamaño en cm">
+    </div>
+    <div id="calibInfo" style="font-size:11px;color:var(--cyan);margin-top:6px"></div>
+    <div class="btns" style="margin-top:8px">
+      <button id="calDetect">⌖ DETECTAR</button>
+      <button class="primary" id="calApply">✓ APLICAR</button>
+      <button id="calCancel" style="flex:0 0 52px">✕</button>
+    </div>
+  </div>
+</div>
+
+<div class="btns">
+  <button class="primary" id="startBtn">▶ INICIAR</button>
+  <button id="resetBtn">RESET</button>
+</div>
+
+<p class="hint">
+  <b>Arrastrá las líneas A y B</b> sobre el video para definir la zona de medición.
+  El cronómetro arranca cuando el objeto <b>cruza</b> la primera línea y frena cuando cruza la segunda
+  (en ambos sentidos, sin importar qué tan rápido pase). Velocidad = distancia A–B / tiempo.
+  Con <b>📐 AUTO-CALIBRAR</b> no hace falta medir nada: mostrá una hoja A4 o una tarjeta
+  en el plano de movimiento, tocá DETECTAR (o alineá la barra a mano) y APLICAR.
+  <b>FLOW</b> sigue puntos de textura del objeto en vez de un centroide de píxeles —
+  más estable con luz cambiante o fondos con dibujos. Si el objeto es liso y sin
+  textura, probá <b>DIFF</b>.
+</p>
+
+<script>
+const video = document.getElementById('video');
+const wrap = document.getElementById('videoWrap');
+const overlay = document.getElementById('overlay');
+const octx = overlay.getContext('2d');
+const chart = document.getElementById('chart');
+const cctx = chart.getContext('2d');
+
+const W = 120;
+let H = 90;
+const proc = document.createElement('canvas');
+const pctx = proc.getContext('2d', {willReadFrequently:true});
+
+let prev = null, prevCx = null, prevCy = null, prevT = null;
+let ema = 0, running = false;
+let history = new Array(120).fill(0);
+let frames = 0, lastFpsT = performance.now(), fpsVal = 0;
+
+// ROI: posiciones de las líneas como fracción del ancho (0..1)
+let lineA = 0.30, lineB = 0.70;
+let dragging = null; // 'A' | 'B'
+
+// Posición fraccional del centroide en el frame anterior (para detectar cruces)
+let prevFx = null, prevFxT = null, lostT = null;
+
+// Máquina de estados del cruce
+// idle → timing (cruzó primera línea) → idle (cruzó segunda: medido)
+let cross = { state:'idle', startLine:null, t0:0 };
+let maxCross = 0;
+
+const $ = id => document.getElementById(id);
+
+// ---------- Seguimiento: diferencia de frames vs optical flow ----------
+let trackMode = 'flow'; // 'diff' | 'flow'
+$('modeDiff').onclick = () => setTrackMode('diff');
+$('modeFlow').onclick = () => setTrackMode('flow');
+function setTrackMode(m){
+  trackMode = m;
+  $('modeDiff').classList.toggle('active', m === 'diff');
+  $('modeFlow').classList.toggle('active', m === 'flow');
+  flowPoints = []; reseedCounter = 0;
+  $('ptCount').textContent = m === 'flow' ? '0 pts' : '—';
+}
+
+// ---------- Cámara ----------
+$('startBtn').onclick = async () => {
+  if (running){
+    running = false;
+    $('startBtn').textContent = '▶ INICIAR';
+    $('status').textContent = 'PAUSADO'; $('status').className = '';
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode:'environment', width:{ideal:640}, height:{ideal:480} }, audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    setupProcSize();
+    running = true; prev = null; prevCx = null; prevFx = null;
+    grayPrev = null; flowPoints = []; reseedCounter = 0;
+    resetCross();
+    $('startBtn').textContent = '⏸ PAUSAR';
+    $('status').textContent = '● MIDIENDO'; $('status').className = 'on';
+    loop();
+  } catch(e){
+    $('status').textContent = 'SIN PERMISO DE CÁMARA';
+    alert('No se pudo acceder a la cámara: ' + e.message);
+  }
+};
+
+$('resetBtn').onclick = () => {
+  maxCross = 0; $('max').textContent = '—';
+  $('roiSpeed').textContent = '—'; $('crossT').textContent = '—';
+  resetCross();
+};
+
+function setupProcSize(){
+  const h = Math.round(W * video.videoHeight / video.videoWidth) || 90;
+  if (h !== H || !proc.width){ H = h; proc.width = W; proc.height = H; prev = null; }
+  // el layout del video puede cambiar recién en el próximo frame
+  requestAnimationFrame(sizeCanvases);
+}
+video.addEventListener('loadedmetadata', setupProcSize);
+
+function sizeCanvases(){
+  overlay.width = wrap.clientWidth; overlay.height = wrap.clientHeight;
+  chart.width = chart.clientWidth * 2; chart.height = 160;
+  drawStatic();
+}
+window.addEventListener('resize', sizeCanvases);
+new ResizeObserver(sizeCanvases).observe(wrap);
+
+// ---------- Arrastre de líneas ROI y de la barra de calibración ----------
+wrap.addEventListener('pointerdown', e => {
+  const r = wrap.getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width;
+  const fy = (e.clientY - r.top) / r.height;
+  if (calibMode){
+    const d1 = Math.hypot(fx - calP1.x, fy - calP1.y);
+    const d2 = Math.hypot(fx - calP2.x, fy - calP2.y);
+    if (Math.min(d1, d2) < 0.15){
+      calDrag = d1 < d2 ? calP1 : calP2;
+      wrap.setPointerCapture(e.pointerId);
+    }
+    return;
+  }
+  const dA = Math.abs(fx - lineA), dB = Math.abs(fx - lineB);
+  if (Math.min(dA, dB) < 0.12){
+    dragging = dA < dB ? 'A' : 'B';
+    wrap.setPointerCapture(e.pointerId);
+  }
+});
+wrap.addEventListener('pointermove', e => {
+  const r = wrap.getBoundingClientRect();
+  if (calDrag){
+    calDrag.x = Math.min(0.98, Math.max(0.02, (e.clientX - r.left) / r.width));
+    calDrag.y = Math.min(0.95, Math.max(0.05, (e.clientY - r.top) / r.height));
+    updateCalibInfo();
+    if (!running) drawStatic();
+    return;
+  }
+  if (!dragging) return;
+  let fx = Math.min(0.95, Math.max(0.05, (e.clientX - r.left) / r.width));
+  if (dragging === 'A') lineA = fx; else lineB = fx;
+  updateRoiDist();
+  if (!running) drawStatic();
+});
+wrap.addEventListener('pointerup', () => {
+  if (calDrag){ calDrag = null; return; }
+  dragging = null; resetCross();
+});
+
+function roiDistReal(){
+  const fov = parseFloat($('fov').value) || 50;
+  return Math.abs(lineB - lineA) * fov; // en cm o m según selector
+}
+function updateRoiDist(){
+  const u = $('unitSel').value;
+  $('roiDist').textContent = 'Distancia A–B: ' + roiDistReal().toFixed(1) + ' ' + u;
+}
+$('fov').oninput = updateRoiDist;
+$('unitSel').onchange = () => { updateRoiDist(); $('roiUnit').textContent = $('unitSel').value === 'm' ? 'km/h' : 'cm/s'; };
+updateRoiDist();
+
+// ---------- Auto-calibración con objeto de referencia ----------
+// El usuario pone un objeto de tamaño conocido en el plano de movimiento,
+// la barra se alinea con él (a mano o con DETECTAR) y de la fracción del
+// encuadre que ocupa sale el ancho real del campo visible completo.
+let calibMode = false;
+let calP1 = {x:0.30, y:0.55}, calP2 = {x:0.70, y:0.55};
+let calDrag = null;
+
+$('refSel').onchange = () => {
+  $('refCustom').hidden = $('refSel').value !== 'custom';
+  updateCalibInfo();
+};
+$('refCustom').oninput = updateCalibInfo;
+
+function refSizeCm(){
+  return $('refSel').value === 'custom'
+    ? (parseFloat($('refCustom').value) || 10)
+    : parseFloat($('refSel').value);
+}
+// largo de la barra como fracción del ancho del encuadre (px cuadrados,
+// así que dy se lleva a unidades de ancho con la relación de aspecto)
+function segLenFrac(){
+  const aspect = overlay.width ? overlay.height / overlay.width : 0.75;
+  return Math.max(0.01, Math.hypot(calP2.x - calP1.x, (calP2.y - calP1.y) * aspect));
+}
+function calibFieldCm(){
+  return refSizeCm() / segLenFrac();
+}
+function updateCalibInfo(){
+  $('calibInfo').textContent =
+    'La barra mide ' + refSizeCm().toFixed(2).replace(/\.?0+$/,'') + ' cm → campo visible: ' +
+    calibFieldCm().toFixed(1) + ' cm';
+}
+
+$('calibBtn').onclick = () => {
+  if (!video.videoWidth){
+    alert('Primero iniciá la cámara, después calibrá.');
+    return;
+  }
+  calibMode = true;
+  $('calibPanel').hidden = false; $('calibBtn').hidden = true;
+  setRoiState('📐 CALIBRANDO — alineá la barra con el objeto', 'timing');
+  updateCalibInfo();
+  if (!running) drawStatic();
+};
+function exitCalib(){
+  calibMode = false; calDrag = null;
+  $('calibPanel').hidden = true; $('calibBtn').hidden = false;
+  resetCross();
+  if (!running) drawStatic();
+}
+$('calCancel').onclick = exitCalib;
+$('calApply').onclick = () => {
+  const fieldCm = calibFieldCm();
+  const isM = $('unitSel').value === 'm';
+  $('fov').value = isM ? (fieldCm/100).toFixed(2) : fieldCm.toFixed(1);
+  updateRoiDist();
+  exitCalib();
+};
+
+// Detección automática: busca la mancha brillante más grande del encuadre
+// (una hoja blanca o tarjeta clara contra fondo más oscuro) y ajusta la
+// barra a su ancho. Si no hay nada claro, se avisa y se alinea a mano.
+$('calDetect').onclick = () => {
+  if (!video.videoWidth || !proc.width) return;
+  pctx.drawImage(video, 0, 0, W, H);
+  const d = pctx.getImageData(0, 0, W, H).data;
+  const N = W*H;
+  const luma = new Float32Array(N);
+  let mean = 0;
+  for (let i=0, p=0; i<d.length; i+=4, p++){
+    luma[p] = d[i]*.299 + d[i+1]*.587 + d[i+2]*.114;
+    mean += luma[p];
+  }
+  mean /= N;
+  const th = Math.min(235, mean + 45);
+
+  // componente conexa brillante más grande (BFS 4-conexo)
+  const seen = new Uint8Array(N);
+  const qx = new Int32Array(N), qy = new Int32Array(N);
+  let best = null;
+  for (let p0=0; p0<N; p0++){
+    if (seen[p0] || luma[p0] < th) continue;
+    let head=0, tail=0, n=0, minX=W, maxX=0, minY=H, maxY=0;
+    seen[p0] = 1; qx[tail] = p0 % W; qy[tail] = (p0 / W) | 0; tail++;
+    while (head < tail){
+      const x = qx[head], y = qy[head]; head++; n++;
+      if (x<minX)minX=x; if (x>maxX)maxX=x;
+      if (y<minY)minY=y; if (y>maxY)maxY=y;
+      if (x>0   && !seen[y*W+x-1] && luma[y*W+x-1]>=th){ seen[y*W+x-1]=1; qx[tail]=x-1; qy[tail]=y; tail++; }
+      if (x<W-1 && !seen[y*W+x+1] && luma[y*W+x+1]>=th){ seen[y*W+x+1]=1; qx[tail]=x+1; qy[tail]=y; tail++; }
+      if (y>0   && !seen[(y-1)*W+x] && luma[(y-1)*W+x]>=th){ seen[(y-1)*W+x]=1; qx[tail]=x; qy[tail]=y-1; tail++; }
+      if (y<H-1 && !seen[(y+1)*W+x] && luma[(y+1)*W+x]>=th){ seen[(y+1)*W+x]=1; qx[tail]=x; qy[tail]=y+1; tail++; }
+    }
+    if (!best || n > best.n) best = {n, minX, maxX, minY, maxY};
+  }
+
+  if (!best || best.n < N*0.02){
+    $('calibInfo').textContent = 'No detecté un objeto claro contra el fondo — acomodá la barra a mano.';
+    return;
+  }
+  const cy = (best.minY + best.maxY + 1) / 2 / H;
+  calP1 = {x: best.minX / W, y: cy};
+  calP2 = {x: (best.maxX + 1) / W, y: cy};
+  updateCalibInfo();
+  if (!running) drawStatic();
+};
+
+// ---------- Optical flow disperso (Lucas-Kanade, sin pirámide) ----------
+// Sigue puntos de textura individuales entre frames en vez de promediar
+// píxeles que cambiaron. Más robusto que la diferencia de frames con luz
+// variable o fondos con dibujos, porque cada punto se ancla a un gradiente
+// local en vez de a un umbral de brillo. Limitación: al no usar pirámide de
+// resolución, no sigue bien desplazamientos mayores a ~la mitad de la
+// ventana de búsqueda por frame (objetos muy rápidos a FPS bajo).
+const FLOW_WIN = 2;              // ventana de (2*FLOW_WIN+1)² px alrededor de cada punto
+const FLOW_MAX_PTS = 24;
+const FLOW_MIN_PTS = 10;         // por debajo de esto, se buscan puntos nuevos
+const FLOW_RESEED_EVERY = 20;    // frames entre refrescos aunque haya puntos de sobra
+const FLOW_MIN_FOR_USE = 4;      // mínimo de puntos válidos para confiar en el promedio
+const FLOW_MIN_DET = 1e-3;       // guarda numérica: matriz no invertible (zona sin textura)
+const FLOW_MIN_CORNER = 30;      // autovalor mínimo para aceptar un punto nuevo al sembrar
+
+let grayPrev = null;
+let flowPoints = [];
+let reseedCounter = 0;
+
+function toGray(rgba){
+  const g = new Float32Array(W*H);
+  for (let i=0, p=0; i<rgba.length; i+=4, p++) g[p] = rgba[i]*.299 + rgba[i+1]*.587 + rgba[i+2]*.114;
+  return g;
+}
+function sampleBil(g, x, y){
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x-x0, fy = y-y0;
+  const cx0 = Math.min(W-1,Math.max(0,x0)), cx1 = Math.min(W-1,Math.max(0,x0+1));
+  const cy0 = Math.min(H-1,Math.max(0,y0)), cy1 = Math.min(H-1,Math.max(0,y0+1));
+  const v00=g[cy0*W+cx0], v10=g[cy0*W+cx1], v01=g[cy1*W+cx0], v11=g[cy1*W+cx1];
+  return v00*(1-fx)*(1-fy) + v10*fx*(1-fy) + v01*(1-fx)*fy + v11*fx*fy;
+}
+// Puntaje "Shi-Tomasi": autovalor menor del tensor de estructura en (x,y).
+// Alto en esquinas/textura, cercano a 0 en zonas lisas (problema de apertura).
+function cornerScore(g, x, y){
+  let sIx2=0, sIy2=0, sIxIy=0;
+  for (let dy=-FLOW_WIN; dy<=FLOW_WIN; dy++){
+    for (let dx=-FLOW_WIN; dx<=FLOW_WIN; dx++){
+      const xx=x+dx, yy=y+dy;
+      if (xx<1||xx>W-2||yy<1||yy>H-2) return 0;
+      const ix=(g[yy*W+xx+1]-g[yy*W+xx-1])*0.5, iy=(g[(yy+1)*W+xx]-g[(yy-1)*W+xx])*0.5;
+      sIx2+=ix*ix; sIy2+=iy*iy; sIxIy+=ix*iy;
+    }
+  }
+  const tr = sIx2+sIy2, det = sIx2*sIy2 - sIxIy*sIxIy;
+  return tr/2 - Math.sqrt(Math.max(0, tr*tr/4 - det));
+}
+// Lucas-Kanade iterativo (Gauss-Newton) de un punto entre dos frames.
+// Gradiente espacial fijo del frame previo; solo el residuo temporal
+// cambia entre iteraciones al refinar el desplazamiento (u,v).
+function trackPoint(gp, gc, px0, py0){
+  const N = (2*FLOW_WIN+1)**2;
+  const gx = new Float32Array(N), gy = new Float32Array(N), gv = new Float32Array(N);
+  let sIx2=0, sIy2=0, sIxIy=0, idx=0;
+  for (let dy=-FLOW_WIN; dy<=FLOW_WIN; dy++){
+    for (let dx=-FLOW_WIN; dx<=FLOW_WIN; dx++, idx++){
+      const x=px0+dx, y=py0+dy;
+      const ix=(sampleBil(gp,x+1,y)-sampleBil(gp,x-1,y))*0.5;
+      const iy=(sampleBil(gp,x,y+1)-sampleBil(gp,x,y-1))*0.5;
+      gx[idx]=ix; gy[idx]=iy; gv[idx]=sampleBil(gp,x,y);
+      sIx2+=ix*ix; sIy2+=iy*iy; sIxIy+=ix*iy;
+    }
+  }
+  const det = sIx2*sIy2 - sIxIy*sIxIy;
+  if (Math.abs(det) < FLOW_MIN_DET) return null;
+  let u=0, v=0;
+  for (let iter=0; iter<4; iter++){
+    let sIxIt=0, sIyIt=0, idx2=0;
+    for (let dy=-FLOW_WIN; dy<=FLOW_WIN; dy++){
+      for (let dx=-FLOW_WIN; dx<=FLOW_WIN; dx++, idx2++){
+        const it = sampleBil(gc, px0+dx+u, py0+dy+v) - gv[idx2];
+        sIxIt += gx[idx2]*it; sIyIt += gy[idx2]*it;
+      }
+    }
+    const du = (-sIy2*sIxIt + sIxIy*sIyIt)/det;
+    const dv = (sIxIy*sIxIt - sIx2*sIyIt)/det;
+    if (!isFinite(du) || !isFinite(dv)) return null;
+    u += du; v += dv;
+    if (Math.abs(du) < 0.02 && Math.abs(dv) < 0.02) break;
+  }
+  const nx = px0+u, ny = py0+v;
+  if (nx<2 || nx>W-3 || ny<2 || ny>H-3) return null; // salió del encuadre útil
+  return {x:nx, y:ny, u, v};
+}
+// Busca puntos nuevos con buena textura dentro del área donde hubo
+// movimiento, separados entre sí para no apilarlos en un mismo rincón.
+function seedPoints(gray, bbox){
+  const x0=Math.max(2,bbox.minX), x1=Math.min(W-3,bbox.maxX);
+  const y0=Math.max(2,bbox.minY), y1=Math.min(H-3,bbox.maxY);
+  const cands = [];
+  for (let y=y0; y<=y1; y+=4){
+    for (let x=x0; x<=x1; x+=4){
+      const s = cornerScore(gray, x, y);
+      if (s > FLOW_MIN_CORNER) cands.push({x, y, s});
+    }
+  }
+  cands.sort((a,b) => b.s - a.s);
+  const picked = [];
+  for (const c of cands){
+    if (picked.length >= FLOW_MAX_PTS) break;
+    if (picked.every(p => Math.hypot(p.x-c.x, p.y-c.y) > 5)) picked.push(c);
+  }
+  return picked;
+}
+function updateFlowPoints(gp, gc, bbox){
+  flowPoints = flowPoints.map(p => trackPoint(gp, gc, p.x, p.y)).filter(Boolean);
+  reseedCounter++;
+  if (flowPoints.length < FLOW_MIN_PTS || reseedCounter > FLOW_RESEED_EVERY){
+    for (const s of seedPoints(gc, bbox)){
+      if (flowPoints.length >= FLOW_MAX_PTS) break;
+      if (flowPoints.every(p => Math.hypot(p.x-s.x, p.y-s.y) > 5)) flowPoints.push({x:s.x, y:s.y, u:0, v:0});
+    }
+    reseedCounter = 0;
+  }
+}
+
+function resetCross(){
+  cross = { state:'idle', startLine:null, t0:0 };
+  prevFx = null;
+  setRoiState('ESPERANDO OBJETO', '');
+}
+function setRoiState(txt, cls){
+  const el = $('roiState');
+  el.textContent = txt; el.className = cls;
+}
+
+// ---------- Detección de cruce de línea ----------
+// Devuelve el instante interpolado en que el centroide cruzó `line`,
+// o null si no la cruzó entre el frame anterior y este.
+// Detecta por cambio de lado, no por proximidad: un objeto rápido que
+// salta la línea entre dos frames igual dispara el cruce.
+function crossTime(line, fx, now){
+  if (prevFx === null) return null;
+  if ((prevFx - line) * (fx - line) > 0) return null; // quedó del mismo lado
+  if (fx === prevFx) return now;
+  const frac = (line - prevFx) / (fx - prevFx);
+  return prevFxT + frac * (now - prevFxT);
+}
+
+function finishCross(dt){
+  if (dt > 0.02){ // descartar falsos cruces instantáneos
+    let v = roiDistReal() / dt; // cm/s o m/s
+    if ($('unitSel').value === 'm') v *= 3.6;
+    $('roiSpeed').textContent = v.toFixed(1);
+    $('crossT').textContent = dt.toFixed(2) + 's';
+    if (v > maxCross){ maxCross = v; $('max').textContent = v.toFixed(1); }
+    setRoiState('✓ MEDIDO — listo para el próximo', 'done');
+  }
+  cross = { state:'idle', startLine:null, t0:0 };
+}
+
+// ---------- Loop principal ----------
+function loop(){
+  if (!running) return;
+  requestAnimationFrame(loop);
+
+  const now = performance.now();
+  frames++;
+  if (now - lastFpsT >= 1000){ fpsVal = frames; frames = 0; lastFpsT = now; $('fps').textContent = fpsVal; }
+
+  if (!proc.width) return;
+  pctx.drawImage(video, 0, 0, W, H);
+  const frame = pctx.getImageData(0, 0, W, H).data;
+  const grayCur = toGray(frame);
+
+  let cx = null, cy = null;
+
+  if (prev && prev.length === frame.length){
+    let sx=0, sy=0, n=0, minX=W, maxX=0, minY=H, maxY=0;
+    const TH = 28;
+    for (let i=0, p=0; i<frame.length; i+=4, p++){
+      const d = Math.abs(frame[i]-prev[i]) + Math.abs(frame[i+1]-prev[i+1]) + Math.abs(frame[i+2]-prev[i+2]);
+      if (d > TH*3){
+        const px = p % W, py = (p / W) | 0;
+        sx += px; sy += py; n++;
+        if (px<minX) minX=px; if (px>maxX) maxX=px;
+        if (py<minY) minY=py; if (py>maxY) maxY=py;
+      }
+    }
+    const minPix = W*H*0.005;
+
+    if (n > minPix){
+      lostT = null;
+      cx = sx/n; cy = sy/n; // centroide de diferencia de frames (siempre disponible)
+
+      let flowPxPerSec = null;
+      if (trackMode === 'flow' && grayPrev){
+        updateFlowPoints(grayPrev, grayCur, {minX, maxX, minY, maxY});
+        if (flowPoints.length >= FLOW_MIN_FOR_USE){
+          let su=0, sv=0, smx=0, smy=0;
+          for (const p of flowPoints){ su+=p.u; sv+=p.v; smx+=p.x; smy+=p.y; }
+          const fn = flowPoints.length;
+          cx = smx/fn; cy = smy/fn; // posición promedio de los puntos seguidos: más estable que el centroide
+          if (prevT) flowPxPerSec = Math.hypot(su/fn, sv/fn) / ((now - prevT)/1000);
+        }
+        $('ptCount').textContent = flowPoints.length + ' pts';
+      }
+
+      // velocidad continua (secundaria)
+      if (prevT){
+        const dt = (now - prevT)/1000;
+        const pxPerSec = flowPxPerSec !== null ? flowPxPerSec
+          : (prevCx !== null ? Math.hypot(cx-prevCx, cy-prevCy) / dt : 0);
+        const fov = parseFloat($('fov').value) || 50;
+        let real = pxPerSec * (fov / W);
+        if ($('unitSel').value === 'm') real *= 3.6;
+        ema = ema*0.6 + real*0.4;
+      }
+      prevCx = cx; prevCy = cy; prevT = now;
+
+      // ---- máquina de estados del cruce ROI (pausada durante calibración) ----
+      if (!calibMode){
+      const fx = cx / W; // posición fraccional
+      const L = Math.min(lineA, lineB), R = Math.max(lineA, lineB);
+      const tL = crossTime(L, fx, now);
+      const tR = crossTime(R, fx, now);
+
+      if (cross.state === 'idle'){
+        if (tL !== null && tR !== null){
+          // tan rápido que cruzó ambas líneas en un solo frame: medir igual
+          finishCross(Math.abs(tR - tL));
+        } else if (tL !== null){
+          cross = {state:'timing', startLine:'L', t0:tL};
+          setRoiState('⏱ CRONOMETRANDO →', 'timing');
+        } else if (tR !== null){
+          cross = {state:'timing', startLine:'R', t0:tR};
+          setRoiState('⏱ CRONOMETRANDO ←', 'timing');
+        }
+      }
+      else if (cross.state === 'timing'){
+        const targetT = cross.startLine === 'L' ? tR : tL;
+        const backT   = cross.startLine === 'L' ? tL : tR;
+        if (targetT !== null){
+          finishCross(targetT - cross.t0);
+        } else if (backT !== null){
+          // volvió a cruzar la línea de partida: reiniciar el cronómetro
+          cross.t0 = backT;
+        } else if (now - cross.t0 > 5000){
+          resetCross();
+        }
+      }
+
+      prevFx = fx; prevFxT = now;
+      }
+    } else {
+      ema *= 0.85;
+      if (ema < 0.05){ ema = 0; prevCx = null; }
+      // si el objeto desapareció, olvidar su última posición tras 0.5s
+      // (evita "cruces" falsos cuando reaparece en otro lado)
+      if (lostT === null) lostT = now;
+      if (now - lostT > 500) prevFx = null;
+      // si desapareció a mitad del cruce, desarmar tras 1.5s
+      if (cross.state === 'timing' && now - cross.t0 > 1500) resetCross();
+      // sin objeto no hay nada válido para seguir: descartar puntos viejos
+      if (flowPoints.length){ flowPoints = []; $('ptCount').textContent = trackMode === 'flow' ? '0 pts' : '—'; }
+    }
+
+    $('speed').textContent = ema.toFixed(1);
+    pushHistory(ema);
+  }
+
+  prev = frame.slice(0);
+  grayPrev = grayCur;
+  drawOverlay(cx, cy);
+}
+
+// ---------- Dibujo ----------
+function drawLines(){
+  const w = overlay.width, h = overlay.height;
+  if (calibMode){
+    // barra de calibración con manijas en los extremos
+    const x1 = calP1.x*w, y1 = calP1.y*h, x2 = calP2.x*w, y2 = calP2.y*h;
+    octx.strokeStyle = '#ffb454'; octx.lineWidth = 3;
+    octx.beginPath(); octx.moveTo(x1,y1); octx.lineTo(x2,y2); octx.stroke();
+    [[x1,y1],[x2,y2]].forEach(([x,y])=>{
+      octx.beginPath(); octx.arc(x, y, 14, 0, Math.PI*2);
+      octx.fillStyle = 'rgba(22,29,39,.85)'; octx.fill();
+      octx.strokeStyle = '#ffb454'; octx.lineWidth = 2; octx.stroke();
+      octx.beginPath(); octx.arc(x, y, 4, 0, Math.PI*2);
+      octx.fillStyle = '#ffb454'; octx.fill();
+    });
+    octx.fillStyle = '#ffb454'; octx.font = 'bold 14px monospace';
+    const label = refSizeCm().toFixed(2).replace(/\.?0+$/,'') + ' cm';
+    octx.fillText(label, (x1+x2)/2 - octx.measureText(label).width/2, Math.min(y1,y2) - 12);
+    return;
+  }
+  [[lineA,'A'],[lineB,'B']].forEach(([f,name])=>{
+    const x = f * w;
+    const active = cross.state === 'timing';
+    octx.strokeStyle = active ? 'rgba(255,180,84,.95)' : 'rgba(95,212,196,.85)';
+    octx.lineWidth = 3;
+    octx.setLineDash([10,8]);
+    octx.beginPath(); octx.moveTo(x,0); octx.lineTo(x,h); octx.stroke();
+    octx.setLineDash([]);
+    // etiqueta
+    octx.fillStyle = active ? '#ffb454' : '#5fd4c4';
+    octx.font = 'bold 16px monospace';
+    octx.fillText(name, x+6, 22);
+    // manija de arrastre
+    octx.beginPath(); octx.arc(x, h-24, 12, 0, Math.PI*2);
+    octx.fillStyle = 'rgba(22,29,39,.9)'; octx.fill();
+    octx.strokeStyle = active ? '#ffb454' : '#5fd4c4'; octx.lineWidth = 2; octx.stroke();
+    octx.fillStyle = active ? '#ffb454' : '#5fd4c4';
+    octx.fillText('⇔', x-8, h-18);
+  });
+}
+
+function drawStatic(){
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  drawLines();
+}
+
+function drawOverlay(cx, cy){
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  drawLines();
+  if (trackMode === 'flow' && flowPoints.length){
+    octx.fillStyle = 'rgba(95,212,196,.8)';
+    for (const p of flowPoints){
+      octx.beginPath();
+      octx.arc(p.x/W*overlay.width, p.y/H*overlay.height, 2.5, 0, Math.PI*2);
+      octx.fill();
+    }
+  }
+  if (cx === null) return;
+  const x = cx/W*overlay.width, y = cy/H*overlay.height;
+  octx.strokeStyle = '#ffb454'; octx.fillStyle = 'rgba(255,180,84,.9)'; octx.lineWidth = 2;
+  octx.beginPath(); octx.arc(x,y,6,0,Math.PI*2); octx.fill();
+  octx.beginPath(); octx.arc(x,y,16,0,Math.PI*2); octx.stroke();
+  octx.beginPath();
+  octx.moveTo(x-26,y); octx.lineTo(x-18,y); octx.moveTo(x+18,y); octx.lineTo(x+26,y);
+  octx.moveTo(x,y-26); octx.lineTo(x,y-18); octx.moveTo(x,y+18); octx.lineTo(x,y+26);
+  octx.stroke();
+}
+
+function pushHistory(v){
+  history.push(v); history.shift();
+  const w = chart.width, h = chart.height;
+  cctx.clearRect(0,0,w,h);
+  const peak = Math.max(...history, 1);
+  cctx.strokeStyle = '#ffb454'; cctx.lineWidth = 3; cctx.beginPath();
+  history.forEach((val,i)=>{
+    const x = i/(history.length-1)*w;
+    const y = h - (val/peak)*(h-14) - 6;
+    i===0 ? cctx.moveTo(x,y) : cctx.lineTo(x,y);
+  });
+  cctx.stroke();
+}
+
+// dibujar las líneas A/B apenas carga la página (antes no aparecían hasta iniciar)
+sizeCanvases();
+</script>
+</body>
+</html>
