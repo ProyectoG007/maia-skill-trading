@@ -1,9 +1,8 @@
-// Optical flow disperso (Lucas-Kanade de una escala, iterativo Gauss-Newton).
-// Lógica pura: opera sobre buffers de luminancia (Float32Array) + dimensiones.
-// Sigue puntos de textura individuales entre frames en vez de promediar
-// píxeles que cambiaron: más robusto con luz variable o fondos con dibujos.
-// Limitación: sin pirámide de resolución no sigue bien desplazamientos
-// mayores a ~la mitad de la ventana por frame (ver SPEC F5).
+// Optical flow disperso (Lucas-Kanade iterativo Gauss-Newton, con pirámide
+// de 2 niveles). Lógica pura: opera sobre buffers de luminancia
+// (Float32Array) + dimensiones. Sigue puntos de textura individuales entre
+// frames en vez de promediar píxeles que cambiaron: más robusto con luz
+// variable o fondos con dibujos.
 
 export const FLOW_DEFAULTS = {
   win: 2,           // ventana de (2*win+1)² px alrededor de cada punto
@@ -44,9 +43,11 @@ export function cornerScore(g, W, H, x, y, win = FLOW_DEFAULTS.win){
 
 // Lucas-Kanade iterativo de un punto entre dos frames. Gradiente espacial
 // fijo del frame previo; solo el residuo temporal cambia entre iteraciones
-// al refinar el desplazamiento (u,v). Devuelve la nueva posición o null si
-// el punto no es seguible (sin textura, no converge, o salió del encuadre).
-export function trackPoint(gp, gc, W, H, px0, py0, opts = FLOW_DEFAULTS){
+// al refinar el desplazamiento (u,v), arrancando desde la estimación inicial
+// (u0,v0) — 0,0 por defecto, o el resultado escalado del nivel grueso de la
+// pirámide (ver trackPointPyramid). Devuelve la nueva posición o null si el
+// punto no es seguible (sin textura, no converge, o salió del encuadre).
+export function trackPoint(gp, gc, W, H, px0, py0, opts = FLOW_DEFAULTS, u0 = 0, v0 = 0){
   const win = opts.win, N = (2*win+1)**2;
   const gx = new Float32Array(N), gy = new Float32Array(N), gv = new Float32Array(N);
   let sIx2=0, sIy2=0, sIxIy=0, idx=0;
@@ -61,7 +62,7 @@ export function trackPoint(gp, gc, W, H, px0, py0, opts = FLOW_DEFAULTS){
   }
   const det = sIx2*sIy2 - sIxIy*sIxIy;
   if (Math.abs(det) < opts.minDet) return null;
-  let u=0, v=0;
+  let u=u0, v=v0;
   for (let iter=0; iter<4; iter++){
     let sIxIt=0, sIyIt=0, idx2=0;
     for (let dy=-win; dy<=win; dy++){
@@ -79,6 +80,36 @@ export function trackPoint(gp, gc, W, H, px0, py0, opts = FLOW_DEFAULTS){
   const nx = px0+u, ny = py0+v;
   if (nx<2 || nx>W-3 || ny<2 || ny>H-3) return null; // salió del encuadre útil
   return { x:nx, y:ny, u, v };
+}
+
+// Reduce a la mitad la resolución promediando bloques 2×2 (nivel grueso de
+// la pirámide). Bordes impares se clampan al último píxel disponible.
+export function downsample2x(g, W, H){
+  const W2 = Math.ceil(W/2), H2 = Math.ceil(H/2);
+  const out = new Float32Array(W2*H2);
+  for (let y=0; y<H2; y++){
+    for (let x=0; x<W2; x++){
+      const x0=Math.min(2*x,W-1), x1=Math.min(2*x+1,W-1);
+      const y0=Math.min(2*y,H-1), y1=Math.min(2*y+1,H-1);
+      out[y*W2+x] = (g[y0*W+x0]+g[y0*W+x1]+g[y1*W+x0]+g[y1*W+x1]) / 4;
+    }
+  }
+  return { g: out, W: W2, H: H2 };
+}
+
+// Lucas-Kanade de 2 niveles: sigue primero en una versión a mitad de
+// resolución (donde el mismo desplazamiento real ocupa la mitad de píxeles,
+// así que entra mejor en el radio de convergencia de la linealización) y usa
+// ese resultado ×2 como estimación inicial para refinar en la resolución
+// completa. Aproximadamente duplica el desplazamiento máximo por frame que
+// se puede seguir respecto al LK de una sola escala.
+export function trackPointPyramid(gp, gc, W, H, px0, py0, opts = FLOW_DEFAULTS){
+  const coarseP = downsample2x(gp, W, H);
+  const coarseC = downsample2x(gc, W, H);
+  const coarse = trackPoint(coarseP.g, coarseC.g, coarseP.W, coarseP.H, px0/2, py0/2, opts);
+  const u0 = coarse ? coarse.u*2 : 0;
+  const v0 = coarse ? coarse.v*2 : 0;
+  return trackPoint(gp, gc, W, H, px0, py0, opts, u0, v0);
 }
 
 // Busca puntos nuevos con buena textura dentro de `bbox` (la zona donde hubo
@@ -116,10 +147,10 @@ export class FlowTracker {
     this.reseedCounter = 0;
   }
 
-  // Avanza todos los puntos de gp→gc y resiembra si hace falta.
+  // Avanza todos los puntos de gp→gc (LK piramidal) y resiembra si hace falta.
   update(gp, gc, bbox){
     this.points = this.points
-      .map(p => trackPoint(gp, gc, this.W, this.H, p.x, p.y, this.opts))
+      .map(p => trackPointPyramid(gp, gc, this.W, this.H, p.x, p.y, this.opts))
       .filter(Boolean);
     this.reseedCounter++;
     if (this.points.length < this.opts.minPts || this.reseedCounter > this.opts.reseedEvery){

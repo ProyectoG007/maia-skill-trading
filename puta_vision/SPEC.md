@@ -145,7 +145,7 @@ El salto de "aproximado" a "confiable" cuando la cámara no está perpendicular.
 - **Aceptación:** medir 10 cruces, cerrar y reabrir la página, exportar CSV
   con las 10 filas y sus fotos visibles en el historial.
 
-### Fase 5 — Refinado de tracking
+### Fase 5 — Refinado de tracking ✅ **hecha**
 - **Core:** pirámide de 2 niveles para Lucas-Kanade (rango de desplazamiento
   ×2–3 por frame); `kalman.js` sobre la trayectoria (suaviza sin el retardo
   de la EMA).

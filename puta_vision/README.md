@@ -65,8 +65,8 @@ se ven como puntitos cian sobre el video.
 ### Optical flow disperso (Lucas-Kanade)
 
 Implementado en JS puro (sin OpenCV.js, que pesa ~8 MB y rompería el "cero
-dependencias"). Es Lucas-Kanade clásico de una sola escala (sin pirámide de
-resolución), iterativo tipo Gauss-Newton:
+dependencias"). Es Lucas-Kanade iterativo tipo Gauss-Newton, con pirámide de
+2 niveles (ver sección "Tracking refinado" más abajo):
 
 1. **Selección de puntos (`seedPoints`)** — dentro del recuadro donde hubo
    movimiento, se evalúan candidatos cada 4 px con el puntaje Shi-Tomasi (el
@@ -90,11 +90,10 @@ resolución), iterativo tipo Gauss-Newton:
    de ese umbral, el frame cae de nuevo en modo DIFF automáticamente para esa
    iteración, sin que el usuario note nada raro.
 
-**Limitación**: al no tener pirámide de resolución, este Lucas-Kanade sigue bien
-desplazamientos de hasta ~2-3 px por frame por punto; objetos muy rápidos a FPS
-bajo pueden perder puntos y caer a DIFF más seguido. Una pirámide de 2-3 niveles
-(seguir primero en la imagen reducida a la mitad, refinar en la original) es la
-mejora natural si hace falta más rango.
+Con la pirámide de 2 niveles (F5), el rango de desplazamiento por frame que se
+sigue bien aproximadamente se duplica frente a la versión de una sola escala;
+a objetos aún más rápidos o FPS más bajo, una pirámide de 3+ niveles seguiría
+siendo la mejora natural si hiciera falta más rango todavía.
 
 ### Medición por cruce A→B (la medición principal)
 
@@ -230,6 +229,36 @@ guardada automáticamente en un registro persistente:
 - **Borrar** — botón **🗑** pide confirmación y vacía el registro (memoria
   y `localStorage`).
 
+### Tracking refinado: LK piramidal + Kalman
+
+Dos mejoras internas que no cambian ningún control en pantalla, solo la
+calidad de la medición:
+
+- **Optical flow piramidal (2 niveles)** — el Lucas-Kanade de una sola
+  escala (v3/F1) perdía objetos que se movían más de ~2-3 px por frame:
+  la linealización de Taylor en la que se basa deja de valer con
+  desplazamientos grandes. Ahora `trackPointPyramid` sigue primero en una
+  versión a mitad de resolución (`downsample2x`, promedio de bloques 2×2),
+  donde el mismo desplazamiento real ocupa la mitad de píxeles y entra
+  mejor en el radio de convergencia, y usa ese resultado ×2 como estimación
+  inicial para refinar en la resolución completa. Esto aproximadamente
+  duplica el desplazamiento máximo por frame que FLOW puede seguir. Prueba
+  concreta en los tests: con una traslación sintética de (6, 3) px, el LK de
+  una sola escala converge al periodo equivocado de la textura (error
+  ~16 px) mientras el piramidal converge exacto.
+- **Filtro de Kalman de velocidad constante** reemplaza la media móvil
+  exponencial (EMA) que suavizaba la lectura "Continua". Una EMA reacciona
+  a un cambio real de velocidad con demora (tarda varios frames en
+  "alcanzarlo"); un Kalman con modelo de velocidad constante predice el
+  siguiente estado y lo corrige con cada medición, así que sigue cambios
+  reales más rápido sin dejar de promediar el ruido de una medición puntual
+  mala. Solo suaviza la lectura **continua** — la medición del **cruce
+  A→B** sigue usando la posición cruda sin suavizar, para no perder
+  precisión en la interpolación sub-frame que hace exacto el cronometraje.
+  El filtro opera en píxeles o en metros según el modo (FOV o PLANO) y se
+  reinicia solo si el espacio cambia entre frames, o si el objeto se pierde,
+  para no arrastrar una velocidad estimada de otro objeto o de otra escala.
+
 ### Escenario MESA / CALLE
 
 Toggle arriba del video (debajo de DIFF/FLOW). Cambia tres cosas a la vez para
@@ -328,6 +357,7 @@ puta_vision/
 │   │   ├── blobs.js        ← segmentación multi-objeto + tracking por id
 │   │   ├── homography.js   ← corrección de perspectiva: DLT 4-puntos
 │   │   ├── log.js          ← registro de mediciones + serialización CSV
+│   │   ├── kalman.js       ← filtro de Kalman 2D de velocidad constante
 │   │   └── diff.js         ← diferencia de frames, centroide, mancha brillante
 │   ├── ui/
 │   │   ├── camera.js       ← getUserMedia + buffer de proceso + foto-finish
@@ -348,7 +378,7 @@ Regla de arquitectura: `core/` nunca importa de `ui/`.
 ### Tests
 
 ```
-cd puta_vision && npm test          # 54 tests de los módulos core
+cd puta_vision && npm test          # 63 tests de los módulos core
 ```
 
 Para desplegar alcanza con servir la carpeta por HTTPS (Vercel, Netlify,

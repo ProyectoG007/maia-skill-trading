@@ -11,6 +11,7 @@ import { FlowTracker } from './core/flow.js';
 import { segmentBlobs, BlobTracker } from './core/blobs.js';
 import { computeHomography, invertHomography, applyHomography } from './core/homography.js';
 import { createLogEntry, addEntry, toCSV } from './core/log.js';
+import { Kalman2D } from './core/kalman.js';
 import { W, openCamera, createProcessor, createSnapshotter } from './ui/camera.js';
 import * as overlay from './ui/overlay.js';
 import * as readout from './ui/readout.js';
@@ -32,6 +33,7 @@ const cam = createProcessor();
 const crossing = new CrossingTracker();
 const blobTracker = new BlobTracker();
 const snapshotter = createSnapshotter();
+const kalman = new Kalman2D();
 let flow = new FlowTracker(W, cam.H);
 let log = storage.loadLog();
 
@@ -43,12 +45,13 @@ const state = {
   calibMode: false,
   calP1: {x:0.30, y:0.55}, calP2: {x:0.70, y:0.55},
   maxCross: 0,
-  ema: 0,
+  continuousSpeed: 0,
   history: new Array(120).fill(0),
   frames: 0, lastFpsT: performance.now(),
   prev: null, grayPrev: null,
-  prevCx: null, prevCy: null, prevT: null,
+  prevT: null,
   lostT: null,
+  usingPerspLast: false,   // detecta el cambio de espacio (px/m) para resetear el Kalman
   selectedBlobId: null,     // null = elegir automáticamente el más grande
   lastBlobs: [],            // para dibujar todos los recuadros detectados
   perspMode: false,         // panel de marcado de plano abierto
@@ -61,7 +64,6 @@ const state = {
   perspPreview: null,       // {H,Hinv,widthM,lengthM} en vivo mientras se ajusta
   perspective: null,        // {H,Hinv,widthM,lengthM} aplicado
   perspectiveOn: false,     // toggle FOV/PLANO
-  prevWorld: null,          // última posición real (m) para la velocidad continua
 };
 
 const fov = () => parseFloat($('fov').value) || 50;
@@ -186,14 +188,10 @@ function loop(){
       state.lostT = null;
       cx = target.cx; cy = target.cy; // centroide del blob elegido (respaldo)
 
-      let flowPxPerSec = null;
       if (state.trackMode === 'flow' && state.grayPrev){
         flow.update(state.grayPrev, gray, target.bbox);
         const m = flow.mean();
-        if (m){
-          cx = m.cx; cy = m.cy; // promedio de puntos seguidos: más estable
-          if (state.prevT) flowPxPerSec = Math.hypot(m.du, m.dv) / ((now - state.prevT)/1000);
-        }
+        if (m){ cx = m.cx; cy = m.cy; } // promedio de puntos seguidos: más estable
         readout.ptCount(flow.points.length + ' pts');
       }
 
@@ -201,22 +199,23 @@ function loop(){
       const usingPersp = state.perspectiveOn && state.perspective;
       const worldPos = usingPersp ? applyHomography(state.perspective.H, cx, cy) : null;
 
-      // velocidad continua (secundaria)
+      // el Kalman opera en px o en metros según el modo; si el espacio
+      // cambió de un frame al otro, reiniciar para no mezclar escalas
+      if (usingPersp !== state.usingPerspLast){ kalman.reset(); state.usingPerspLast = usingPersp; }
+
+      // velocidad continua (secundaria) — suavizada por Kalman en vez de EMA:
+      // reacciona a un cambio real de velocidad más rápido que una media
+      // móvil, sin dejar de promediar el ruido de una medición puntual mala.
+      // La detección de cruce (abajo) sigue usando la posición cruda, sin
+      // este suavizado, para no perder precisión en la interpolación sub-frame.
       if (state.prevT){
         const dt = (now - state.prevT)/1000;
-        let real;
-        if (worldPos && state.prevWorld){
-          const distM = Math.hypot(worldPos.x - state.prevWorld.x, worldPos.y - state.prevWorld.y);
-          real = crossSpeed(distM, dt, 'm');
-        } else {
-          const pxPerSec = flowPxPerSec !== null ? flowPxPerSec
-            : (state.prevCx !== null ? Math.hypot(cx-state.prevCx, cy-state.prevCy) / dt : 0);
-          real = pxPerSecToReal(pxPerSec, fov(), W, unit());
-        }
-        state.ema = state.ema*0.6 + real*0.4;
+        const posX = worldPos ? worldPos.x : cx, posY = worldPos ? worldPos.y : cy;
+        const k = kalman.update(posX, posY, dt);
+        const speedPerSec = Math.hypot(k.vx, k.vy);
+        state.continuousSpeed = worldPos ? speedPerSec * 3.6 : pxPerSecToReal(speedPerSec, fov(), W, unit());
       }
-      state.prevCx = cx; state.prevCy = cy; state.prevT = now;
-      state.prevWorld = worldPos;
+      state.prevT = now;
 
       // máquina de estados del cruce (pausada durante calibración)
       if (!state.calibMode){
@@ -231,8 +230,8 @@ function loop(){
         }
       }
     } else {
-      state.ema *= 0.85;
-      if (state.ema < 0.05){ state.ema = 0; state.prevCx = null; state.prevWorld = null; }
+      state.continuousSpeed *= 0.85;
+      if (state.continuousSpeed < 0.05){ state.continuousSpeed = 0; kalman.reset(); }
       // si el objeto desapareció, olvidar su última posición tras 0.5s
       // (evita "cruces" falsos cuando reaparece en otro lado)
       if (state.lostT === null) state.lostT = now;
@@ -246,8 +245,8 @@ function loop(){
       }
     }
 
-    readout.continuous(state.ema);
-    state.history.push(state.ema); state.history.shift();
+    readout.continuous(state.continuousSpeed);
+    state.history.push(state.continuousSpeed); state.history.shift();
     overlay.drawChart(cctx, chart.width, chart.height, state.history);
   }
 
@@ -346,10 +345,11 @@ controls.setupButtons({
       if (cam.setup(video)){ state.prev = null; flow = new FlowTracker(W, cam.H); }
       requestAnimationFrame(sizeCanvases);
       state.running = true;
-      state.prev = null; state.grayPrev = null;
-      state.prevCx = null; state.prevT = null; state.prevWorld = null;
+      state.prev = null; state.grayPrev = null; state.prevT = null;
       flow.clear();
       blobTracker.reset();
+      kalman.reset();
+      state.usingPerspLast = false;
       state.selectedBlobId = null;
       state.lastBlobs = [];
       resetCross();
