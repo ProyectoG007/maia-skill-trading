@@ -10,10 +10,15 @@ import {
 import { FlowTracker } from './core/flow.js';
 import { segmentBlobs, BlobTracker } from './core/blobs.js';
 import { computeHomography, invertHomography, applyHomography } from './core/homography.js';
-import { W, openCamera, createProcessor } from './ui/camera.js';
+import { createLogEntry, addEntry, toCSV } from './core/log.js';
+import { W, openCamera, createProcessor, createSnapshotter } from './ui/camera.js';
 import * as overlay from './ui/overlay.js';
 import * as readout from './ui/readout.js';
 import * as controls from './ui/controls.js';
+import * as history from './ui/history.js';
+import * as storage from './ui/storage.js';
+
+const MAX_LOG_ENTRIES = 30;
 
 const $ = id => document.getElementById(id);
 const video = $('video');
@@ -26,7 +31,9 @@ const cctx = chart.getContext('2d');
 const cam = createProcessor();
 const crossing = new CrossingTracker();
 const blobTracker = new BlobTracker();
+const snapshotter = createSnapshotter();
 let flow = new FlowTracker(W, cam.H);
+let log = storage.loadLog();
 
 const state = {
   running: false,
@@ -110,6 +117,22 @@ function resetCross(){
   readout.roiState('ESPERANDO OBJETO', '');
 }
 
+function logMeasurement(v, distUnit, ev){
+  const entry = createLogEntry({
+    timestamp: Date.now(),
+    speed: v,
+    unit: distUnit === 'm' ? 'km/h' : 'cm/s',
+    dtSec: ev.dtSec,
+    dir: ev.dir,
+    mode: state.trackMode,
+    scenario: state.scenario,
+    photoDataUrl: video.videoWidth ? snapshotter.capture(video) : null,
+  });
+  log = addEntry(log, entry, MAX_LOG_ENTRIES);
+  storage.saveLog(log);
+  history.render(log);
+}
+
 function handleCrossEvent(ev, distReal, distUnit){
   if (!ev) return;
   if (ev.type === 'armed'){
@@ -119,6 +142,7 @@ function handleCrossEvent(ev, distReal, distUnit){
     readout.measurement(v, ev.dtSec);
     if (v > state.maxCross){ state.maxCross = v; readout.max(v); }
     readout.roiState('✓ MEDIDO — listo para el próximo', 'done');
+    logMeasurement(v, distUnit, ev);
   } else if (ev.type === 'timeout'){
     readout.roiState('ESPERANDO OBJETO', '');
   }
@@ -449,10 +473,28 @@ controls.setupButtons({
 
   perspCancel(){ exitPersp(); },
   perspDimsInput(){ updatePerspPreview(); },
+
+  exportCsv(){
+    if (!log.length) return;
+    const blob = new Blob([toCSV(log)], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `radar-mediciones-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  clearLog(){
+    if (log.length && !confirm('¿Borrar las ' + log.length + ' mediciones guardadas?')) return;
+    log = [];
+    storage.clearLog();
+    history.render(log);
+  },
 });
 
 // ---------- Arranque ----------
 controls.populateRefPresets(SCENARIOS[state.scenario].presets);
 updateRoiDist();
 updateScenarioHint();
+history.render(log);
 sizeCanvases();

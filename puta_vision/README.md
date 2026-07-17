@@ -207,6 +207,29 @@ real con la división proyectiva estándar; `invertHomography` calcula la
 inversa (adjugada/determinante) para proyectar la grilla de verificación de
 vuelta a la imagen.
 
+### Registro: foto-finish e historial exportable
+
+Cada vez que se completa una medición de cruce (evento `measured`), queda
+guardada automáticamente en un registro persistente:
+
+- **Foto-finish** — se captura el frame del video en ese instante (miniatura
+  JPEG comprimida, no el buffer de análisis de 120 px) y se muestra junto a
+  la medición. Es la respuesta directa a "¿esto midió un auto de verdad o
+  fue un temblor de la cámara?" — si la foto no muestra ningún vehículo,
+  la lectura es ruido y se descarta a simple vista.
+- **Persistencia** — el registro vive en `localStorage`, sobrevive a cerrar
+  la pestaña o recargar. Se guardan como máximo 30 mediciones (las más
+  viejas se descartan); si el espacio de `localStorage` se llena por el
+  peso de las fotos, se reintenta guardando sin las fotos de las entradas
+  más antiguas (conservando las 5 más recientes) antes de resignarse a no
+  persistir ese guardado — nunca revienta la app.
+- **Exportar CSV** — botón **⬇ CSV** descarga todo el historial (fecha y
+  hora, velocidad, unidad, tiempo de cruce, sentido, modo de seguimiento,
+  escenario) como archivo `.csv`, sin las fotos (pesarían demasiado en una
+  planilla). Para revisar las fotos, quedan en la lista de la app.
+- **Borrar** — botón **🗑** pide confirmación y vacía el registro (memoria
+  y `localStorage`).
+
 ### Escenario MESA / CALLE
 
 Toggle arriba del video (debajo de DIFF/FLOW). Cambia tres cosas a la vez para
@@ -304,12 +327,15 @@ puta_vision/
 │   │   ├── flow.js         ← Lucas-Kanade: corners, tracking, resiembra
 │   │   ├── blobs.js        ← segmentación multi-objeto + tracking por id
 │   │   ├── homography.js   ← corrección de perspectiva: DLT 4-puntos
+│   │   ├── log.js          ← registro de mediciones + serialización CSV
 │   │   └── diff.js         ← diferencia de frames, centroide, mancha brillante
 │   ├── ui/
-│   │   ├── camera.js       ← getUserMedia + buffer de proceso
+│   │   ├── camera.js       ← getUserMedia + buffer de proceso + foto-finish
 │   │   ├── overlay.js      ← dibujo: líneas, barra, puntos, retículo, gráfico
 │   │   ├── controls.js     ← botones, toggles, arrastre
-│   │   └── readout.js      ← números y estados en pantalla
+│   │   ├── readout.js      ← números y estados en pantalla
+│   │   ├── history.js      ← panel de historial con miniaturas
+│   │   └── storage.js      ← persistencia del registro en localStorage
 │   └── main.js             ← wiring: estado de la app + loop principal
 ├── tests/                  ← node --test (sin dependencias)
 ├── package.json            ← solo type:module + script de test
@@ -322,7 +348,7 @@ Regla de arquitectura: `core/` nunca importa de `ui/`.
 ### Tests
 
 ```
-cd puta_vision && npm test          # 47 tests de los módulos core
+cd puta_vision && npm test          # 54 tests de los módulos core
 ```
 
 Para desplegar alcanza con servir la carpeta por HTTPS (Vercel, Netlify,

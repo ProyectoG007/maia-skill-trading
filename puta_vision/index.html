@@ -111,6 +111,18 @@
   <button id="resetBtn">RESET</button>
 </div>
 
+<div class="calib">
+  <div class="histHead">
+    <label style="margin:0">REGISTRO — foto-finish de cada cruce medido</label>
+    <div class="histActions">
+      <button id="exportCsvBtn">⬇ CSV</button>
+      <button id="clearLogBtn">🗑</button>
+    </div>
+  </div>
+  <div id="histCount" class="hint" style="margin-top:6px">0 mediciones guardadas</div>
+  <div id="historyList" class="historyList"></div>
+</div>
+
 <p class="hint">
   <b>Arrastrá las líneas A y B</b> sobre el video para definir la zona de medición.
   El cronómetro arranca cuando el objeto <b>cruza</b> la primera línea y frena cuando cruza la segunda

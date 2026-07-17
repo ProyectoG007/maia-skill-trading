@@ -87,7 +87,8 @@ export function setupPointerDrag(wrap, state, on){
 // handlers: {start, reset, setMode, setScenario, fovInput, unitChange,
 //            calibOpen, calibDetect, calibApply, calibCancel,
 //            refChange, refCustomInput,
-//            setMeas, perspOpen, perspApply, perspCancel, perspDimsInput}
+//            setMeas, perspOpen, perspApply, perspCancel, perspDimsInput,
+//            exportCsv, clearLog}
 export function setupButtons(handlers){
   $('startBtn').onclick = handlers.start;
   $('resetBtn').onclick = handlers.reset;
@@ -110,6 +111,8 @@ export function setupButtons(handlers){
   $('perspCancel').onclick = handlers.perspCancel;
   $('perspWidth').oninput = handlers.perspDimsInput;
   $('perspLength').oninput = handlers.perspDimsInput;
+  $('exportCsvBtn').onclick = handlers.exportCsv;
+  $('clearLogBtn').onclick = handlers.clearLog;
 }
 
 export function setModeUI(mode){

@@ -136,7 +136,7 @@ El salto de "aproximado" a "confiable" cuando la cámara no está perpendicular.
 - **Aceptación:** medir el mismo vehículo desde cámara en ángulo (~30–45°) y
   desde perpendicular; las lecturas deben coincidir dentro del ±10 %.
 
-### Fase 4 — Foto-finish + registro exportable
+### Fase 4 — Foto-finish + registro exportable ✅ **hecha**
 - **Core (`log.js`):** estructura de medición `{fecha, velocidad, unidad,
   tiempo, sentido, modo, calibración}`; persistencia en `localStorage`;
   serialización CSV. Captura del frame del instante de cruce (dataURL JPEG).

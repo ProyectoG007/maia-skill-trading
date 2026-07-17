@@ -71,6 +71,17 @@ select{background:var(--bg);border:1px solid var(--line);border-radius:6px;color
 #perspPanel .calRow span{font-size:10px;color:var(--muted);flex:none}
 #perspInfo{font-size:11px;color:var(--cyan);margin-top:6px}
 
+.histHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.histActions{display:flex;gap:6px}
+.histActions button{flex:none;padding:6px 10px;font-size:11px}
+.historyList{max-height:280px;overflow-y:auto;margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.histEmpty{font-size:11px;color:var(--muted);padding:10px 0;text-align:center}
+.histRow{display:flex;gap:10px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px}
+.histThumb{width:56px;height:42px;object-fit:cover;border-radius:4px;background:#000;flex:none;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px}
+.histInfo{min-width:0}
+.histSpeed{font-size:15px;color:var(--amber);font-variant-numeric:tabular-nums}
+.histMeta{font-size:10px;color:var(--muted);margin-top:2px;letter-spacing:.02em}
+
 .btns{display:flex;gap:8px;margin-top:10px}
 button{
   flex:1;padding:12px;border-radius:8px;border:1px solid var(--line);

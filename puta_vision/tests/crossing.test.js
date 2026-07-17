@@ -24,6 +24,7 @@ test('cruce lento en varios frames: arma en A y mide en B', () => {
   const done = c.update(0.75, 300, A, B);               // cruzó B (interp. en t=280)
   assert.equal(done.type, 'measured');
   assert.ok(Math.abs(done.dtSec - 0.2) < 1e-9);         // 280 - 80 = 200 ms
+  assert.equal(done.dir, '→');
 });
 
 test('objeto rapidísimo: cruza ambas líneas en un solo frame y se mide igual', () => {
@@ -33,6 +34,15 @@ test('objeto rapidísimo: cruza ambas líneas en un solo frame y se mide igual',
   assert.equal(done.type, 'measured');
   // A se cruza en t=27.7, B en t=72.2 → dt ≈ 44.4 ms
   assert.ok(Math.abs(done.dtSec - (100 * 0.4/0.9)/1000) < 1e-9);
+  assert.equal(done.dir, '→');
+});
+
+test('objeto rapidísimo en sentido inverso: la dirección sale de qué línea cruzó primero', () => {
+  const c = new CrossingTracker();
+  c.update(0.95, 0, 0.3, 0.7);
+  const done = c.update(0.05, 100, 0.3, 0.7);
+  assert.equal(done.type, 'measured');
+  assert.equal(done.dir, '←');
 });
 
 test('re-cruzar la línea de partida reinicia el cronómetro', () => {
@@ -82,4 +92,5 @@ test('funciona en sentido inverso (B hacia A)', () => {
   assert.equal(armed.dir, '←');
   const done = c.update(0.25, 300, 0.3, 0.7);
   assert.equal(done.type, 'measured');
+  assert.equal(done.dir, '←');
 });

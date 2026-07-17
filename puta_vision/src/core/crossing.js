@@ -42,10 +42,12 @@ export class CrossingTracker {
 
   // fx: posición fraccional del objeto; now: ms; a, b: líneas (fracciones).
   // Devuelve un evento o null:
-  //   {type:'armed', dir}        arrancó el cronómetro
-  //   {type:'measured', dtSec}   cruce completo medido
-  //   {type:'discarded'}         cruce demasiado corto (ruido)
-  //   {type:'timeout'}           se desarmó por tiempo
+  //   {type:'armed', dir}          arrancó el cronómetro
+  //   {type:'measured', dtSec, dir} cruce completo medido
+  //   {type:'discarded'}           cruce demasiado corto (ruido)
+  //   {type:'timeout'}             se desarmó por tiempo
+  // dir es '→' si el objeto fue de la línea izquierda a la derecha, '←' si
+  // fue al revés — se usa para el registro de mediciones (SPEC F4).
   update(fx, now, a, b){
     const L = Math.min(a, b), R = Math.max(a, b);
     const tL = crossTime(this.prevFx, this.prevFxT, fx, now, L);
@@ -55,7 +57,7 @@ export class CrossingTracker {
     if (this.state === 'idle'){
       if (tL !== null && tR !== null){
         // tan rápido que cruzó ambas líneas en un solo frame: medir igual
-        event = this._finish(Math.abs(tR - tL));
+        event = this._finish(Math.abs(tR - tL), tL <= tR ? '→' : '←');
       } else if (tL !== null){
         this.state = 'timing'; this.startLine = 'L'; this.t0 = tL;
         event = { type:'armed', dir:'→' };
@@ -67,7 +69,7 @@ export class CrossingTracker {
       const targetT = this.startLine === 'L' ? tR : tL;
       const backT   = this.startLine === 'L' ? tL : tR;
       if (targetT !== null){
-        event = this._finish(targetT - this.t0);
+        event = this._finish(targetT - this.t0, this.startLine === 'L' ? '→' : '←');
       } else if (backT !== null){
         this.t0 = backT; // volvió a cruzar la de partida: reiniciar
       } else if (now - this.t0 > this.timeoutMs){
@@ -82,8 +84,8 @@ export class CrossingTracker {
     return event;
   }
 
-  _finish(dtMs){
+  _finish(dtMs, dir){
     this.state = 'idle'; this.startLine = null; this.t0 = 0;
-    return dtMs > this.minDtMs ? { type:'measured', dtSec: dtMs/1000 } : { type:'discarded' };
+    return dtMs > this.minDtMs ? { type:'measured', dtSec: dtMs/1000, dir } : { type:'discarded' };
   }
 }

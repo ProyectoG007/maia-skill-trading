@@ -35,3 +35,18 @@ export function createProcessor(){
     },
   };
 }
+
+// Miniatura JPEG del frame actual del video (foto-finish, SPEC F4) — un
+// canvas aparte del de proceso, a resolución de exhibición, no de análisis.
+export function createSnapshotter(width = 160){
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  return {
+    capture(video){
+      const h = Math.round(width * video.videoHeight / video.videoWidth) || Math.round(width * 0.75);
+      if (canvas.width !== width || canvas.height !== h){ canvas.width = width; canvas.height = h; }
+      ctx.drawImage(video, 0, 0, width, h);
+      return canvas.toDataURL('image/jpeg', 0.6);
+    },
+  };
+}
