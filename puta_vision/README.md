@@ -31,12 +31,70 @@ celulares modestos.
    y se leen sus píxeles RGB.
 2. **Diferencia de frames** — cada píxel se compara con el frame anterior sumando las
    diferencias absolutas de R, G y B. Si supera el umbral (84), se considera "en movimiento".
-3. **Centroide** — se promedian las coordenadas de todos los píxeles en movimiento.
-   Si hay menos del 0,5 % del área en movimiento, se considera que no hay objeto.
+   Esto siempre se calcula (da el centroide de respaldo, el recuadro de la zona en
+   movimiento para sembrar el optical flow, y la señal de "hay objeto o no").
+3. **Posición del objeto** — según el modo de seguimiento activo (**DIFF** o **FLOW**,
+   ver abajo), la posición del objeto sale del centroide de la diferencia de frames o
+   del promedio de los puntos rastreados por optical flow. Si hay menos del 0,5 % del
+   área en movimiento, se considera que no hay objeto.
 4. **Máquina de estados del cruce** — ver abajo.
-5. **Velocidad continua (secundaria)** — el desplazamiento del centroide entre frames
-   se convierte a unidades reales con la calibración y se suaviza con una media móvil
-   exponencial (EMA, factor 0,6/0,4). Alimenta la celda "Continua" y el gráfico.
+5. **Velocidad continua (secundaria)** — en modo FLOW sale directamente del
+   desplazamiento promedio de los puntos rastreados; en modo DIFF, de la diferencia de
+   posición del centroide entre frames. Se convierte a unidades reales con la
+   calibración y se suaviza con una media móvil exponencial (EMA, factor 0,6/0,4).
+   Alimenta la celda "Continua" y el gráfico.
+
+### Seguimiento: DIFF vs FLOW
+
+El toggle arriba del video cambia cómo se calcula la posición del objeto:
+
+- **DIFF** — el método original: centroide de los píxeles que cambiaron de brillo
+  entre dos frames. Simple y barato, pero un cambio de luz ambiente (una nube, un
+  flicker) también "cambia de brillo" y puede correr el centroide sin que nada
+  se haya movido.
+- **FLOW** (por defecto) — optical flow disperso Lucas-Kanade (ver abajo): sigue
+  puntos de textura concretos del objeto en vez de un promedio de píxeles. Más
+  estable con luz variable o fondos con dibujos, porque cada punto se ancla a un
+  gradiente local, no a un umbral de brillo. Si el objeto es liso y sin textura
+  (una pelota lisa de un solo color, por ejemplo), FLOW no encuentra buenos puntos
+  para seguir y conviene volver a DIFF.
+
+El contador junto al toggle muestra cuántos puntos está siguiendo FLOW en vivo, y
+se ven como puntitos cian sobre el video.
+
+### Optical flow disperso (Lucas-Kanade)
+
+Implementado en JS puro (sin OpenCV.js, que pesa ~8 MB y rompería el "cero
+dependencias"). Es Lucas-Kanade clásico de una sola escala (sin pirámide de
+resolución), iterativo tipo Gauss-Newton:
+
+1. **Selección de puntos (`seedPoints`)** — dentro del recuadro donde hubo
+   movimiento, se evalúan candidatos cada 4 px con el puntaje Shi-Tomasi (el
+   autovalor menor del tensor de estructura 2×2 de gradientes locales: alto en
+   esquinas y texturas, ~0 en zonas lisas donde cualquier desplazamiento es
+   ambiguo — el "problema de apertura"). Se toman los de mejor puntaje,
+   separados al menos 5 px entre sí, hasta 24 puntos.
+2. **Seguimiento (`trackPoint`)** — para cada punto, se resuelve el sistema
+   2×2 de Lucas-Kanade sobre una ventana de 5×5 px: gradiente espacial fijo del
+   frame anterior, residuo temporal recalculado en cada iteración con muestreo
+   bilinear (subpíxel) sobre el frame actual, 4 iteraciones de Gauss-Newton.
+   Un punto se descarta si su matriz de gradientes no es invertible (zona sin
+   textura) o si termina fuera del encuadre útil.
+3. **Resiembra** — si quedan menos de 10 puntos válidos, o cada 20 frames por
+   las dudas, se buscan puntos nuevos para no perder cobertura a medida que el
+   objeto se mueve o gira.
+4. **Uso del resultado** — con 4 puntos válidos o más, la posición del objeto es
+   el promedio de sus posiciones, y la velocidad continua sale directamente del
+   promedio de sus vectores de desplazamiento (no de restar posiciones promedio
+   entre frames, que se distorsionaría si hubo resiembra en el medio). Por debajo
+   de ese umbral, el frame cae de nuevo en modo DIFF automáticamente para esa
+   iteración, sin que el usuario note nada raro.
+
+**Limitación**: al no tener pirámide de resolución, este Lucas-Kanade sigue bien
+desplazamientos de hasta ~2-3 px por frame por punto; objetos muy rápidos a FPS
+bajo pueden perder puntos y caer a DIFF más seguido. Una pirámide de 2-3 niveles
+(seguir primero en la imagen reducida a la mitad, refinar en la original) es la
+mejora natural si hace falta más rango.
 
 ### Medición por cruce A→B (la medición principal)
 
@@ -114,16 +172,17 @@ cronómetro de cruce queda pausado.
 
 En orden de relación esfuerzo/impacto:
 
-1. **Optical flow (Lucas-Kanade)** — reemplazar el centroide de diferencia de frames
-   por seguimiento de features. Mucho más robusto con fondos texturados y luz cambiante.
-   Implementable en JS puro (~80 líneas) para no perder el "cero dependencias"
-   (OpenCV.js resolvería lo mismo pero pesa ~8 MB).
+1. ~~**Optical flow (Lucas-Kanade)**~~ — ✅ **hecho**: seguimiento disperso de
+   puntos de textura en JS puro, con toggle DIFF/FLOW para comparar en vivo.
+   Pendiente natural: pirámide de resolución para aguantar objetos más rápidos.
 2. ~~**Auto-calibración con objeto de referencia**~~ — ✅ **hecho**: detección
    automática del objeto por umbral adaptativo + barra ajustable a mano, con presets
    (A4, tarjeta, CD) y tamaño personalizado.
 3. **Multi-objeto** — segmentar los píxeles en movimiento en blobs (componentes
    conexas) y asignar un ID por objeto. Habilita medir varios cruces simultáneos
-   y filtrar ruido por tamaño de blob.
+   y filtrar ruido por tamaño de blob. Con FLOW ya implementado, esto también podría
+   agrupar los puntos rastreados por clusters de posición/velocidad en vez de blobs
+   de diferencia de frames.
 4. **Foto-finish + registro** — capturar el frame en el instante de cada cruce y
    guardar un historial de mediciones (localStorage) con exportación CSV. Convierte
    la demo en herramienta: evidencia + datos.
