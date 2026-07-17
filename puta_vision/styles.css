@@ -38,6 +38,8 @@ video{width:100%;display:block}
 .seg button{flex:none;padding:7px 14px;border:none;border-radius:0;background:var(--panel);font-size:10px;letter-spacing:.1em}
 .seg button.active{background:var(--cyan);color:#0a1f1c;font-weight:700}
 #ptCount{font-size:10px;color:var(--muted);letter-spacing:.08em}
+#scenarioLabel{font-size:10px;color:var(--muted);letter-spacing:.08em}
+#scenarioHint{margin-top:6px;margin-bottom:0}
 
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:8px}
 .cell{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 8px}

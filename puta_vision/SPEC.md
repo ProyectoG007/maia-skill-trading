@@ -98,7 +98,7 @@ cambiar comportamiento.
   celular que nada cambió (misma URL, mismo comportamiento).
 - **Aceptación:** tests verdes + demo idéntica a la actual.
 
-### Fase 1 — Modo vehicular *(la recomendación; barata porque el motor ya está)*
+### Fase 1 — Modo vehicular *(la recomendación; barata porque el motor ya está)* ✅ **hecha**
 - **Core (`calibration.js`):**
   - Presets vehiculares: carril urbano AR (3,0 m), carril ruta (3,65 m), largo
     sedán (4,5 m), distancia entre postes (configurable). Misma mecánica que

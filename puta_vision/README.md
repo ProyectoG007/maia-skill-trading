@@ -139,6 +139,30 @@ líneas multiplicada por ese valor (se muestra en vivo bajo el campo de calibrac
 Para que sea válida, la cámara tiene que estar **fija** y el movimiento ocurrir
 aproximadamente **a la distancia calibrada y perpendicular a la cámara**.
 
+### Escenario MESA / CALLE
+
+Toggle arriba del video (debajo de DIFF/FLOW). Cambia tres cosas a la vez para
+no tener que ajustarlas a mano cada vez:
+
+- **Unidad por defecto:** MESA usa cm → cm/s; CALLE usa m → km/h.
+- **Ancho de campo (`fov`) por defecto:** 50 (cm) en MESA, 15 (m) en CALLE —
+  un punto de partida razonable para una calle vista de costado.
+- **Presets de auto-calibración:** MESA ofrece hoja A4/tarjeta/CD; CALLE
+  ofrece carril urbano (3,0 m), carril de ruta (3,65 m) y largo de sedán
+  (4,5 m) — se usan igual que los de MESA (detectar o alinear la barra a
+  mano), solo que ahora referencian objetos a escala de calle.
+- **Umbral de tamaño mínimo:** en CALLE se exige que el área en movimiento
+  sea al menos 1,5 % del encuadre (vs. 0,5 % en MESA) para contar como
+  "hay un objeto" — filtra ruido chico (una hoja, un pájaro) al medir
+  tránsito. No es segmentación por objeto (eso es F2 del roadmap), solo un
+  piso de tamaño.
+
+En CALLE también aparece una recomendación de separación mínima entre A y B
+calculada con `recommendedRoiSpanM`: a mayor velocidad esperada, más larga
+tiene que ser la zona de medición para que el error del cronómetro se
+mantenga bajo (la lógica es la misma idea de "cuanto más corto el intervalo
+cronometrado, más pesa cualquier imprecisión de reloj").
+
 ### Auto-calibración con objeto de referencia
 
 Con **📐 AUTO-CALIBRAR CON OBJETO** no hace falta medir la escena con cinta métrica:

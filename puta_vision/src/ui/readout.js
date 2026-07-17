@@ -28,6 +28,8 @@ export function roiDist(dist, unit){
   $('roiDist').textContent = 'Distancia A–B: ' + dist.toFixed(1) + ' ' + unit;
 }
 export function calibInfo(txt){ $('calibInfo').textContent = txt; }
+export function scenarioLabel(txt){ $('scenarioLabel').textContent = txt; }
+export function scenarioHint(txt){ $('scenarioHint').textContent = txt; }
 
 export function resetMeasurements(){
   $('max').textContent = '—';

@@ -25,6 +25,14 @@
   <span id="ptCount">— pts</span>
 </div>
 
+<div class="trackBar">
+  <div class="seg">
+    <button id="scenMesa" data-scenario="mesa" class="active">MESA</button>
+    <button id="scenCalle" data-scenario="calle">CALLE</button>
+  </div>
+  <span id="scenarioLabel">objeto chico, cerca</span>
+</div>
+
 <div class="readout">
   <div class="lbl">VELOCIDAD DE CRUCE A → B</div>
   <div><span id="roiSpeed">—</span><span id="roiUnit">cm/s</span></div>
@@ -50,17 +58,12 @@
     </select>
   </div>
   <div id="roiDist">Distancia A–B: —</div>
+  <div id="scenarioHint" class="hint"></div>
   <button id="calibBtn">📐 AUTO-CALIBRAR CON OBJETO</button>
   <div id="calibPanel" hidden>
     <label>OBJETO DE REFERENCIA — ponelo en el plano donde va a pasar lo que medís</label>
     <div class="calRow">
-      <select id="refSel">
-        <option value="29.7">Hoja A4 apaisada — 29,7 cm</option>
-        <option value="21.0">Hoja A4 vertical — 21,0 cm</option>
-        <option value="8.56">Tarjeta de crédito — 8,56 cm</option>
-        <option value="12.0">CD / DVD — 12,0 cm</option>
-        <option value="custom">Otro…</option>
-      </select>
+      <select id="refSel"></select>
       <input type="number" id="refCustom" value="10" min="0.1" step="0.1" hidden title="tamaño en cm">
     </div>
     <div id="calibInfo"></div>

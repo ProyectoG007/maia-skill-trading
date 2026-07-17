@@ -5,7 +5,7 @@ import { toGray, frameDiff, largestBrightRegion } from './core/diff.js';
 import { CrossingTracker } from './core/crossing.js';
 import {
   segmentLengthFrac, fieldWidthFromReference, roiDistance,
-  crossSpeed, pxPerSecToReal,
+  crossSpeed, pxPerSecToReal, SCENARIOS, minPixelsForArea, recommendedRoiSpanM,
 } from './core/calibration.js';
 import { FlowTracker } from './core/flow.js';
 import { W, openCamera, createProcessor } from './ui/camera.js';
@@ -28,6 +28,7 @@ let flow = new FlowTracker(W, cam.H);
 const state = {
   running: false,
   trackMode: 'flow',        // 'diff' | 'flow'
+  scenario: 'mesa',         // 'mesa' | 'calle'
   lineA: 0.30, lineB: 0.70,
   calibMode: false,
   calP1: {x:0.30, y:0.55}, calP2: {x:0.70, y:0.55},
@@ -118,7 +119,7 @@ function loop(){
 
   if (state.prev && state.prev.length === frame.length){
     const d = frameDiff(frame, state.prev, W, cam.H);
-    const minPix = W * cam.H * 0.005;
+    const minPix = minPixelsForArea(SCENARIOS[state.scenario].minAreaFrac, W, cam.H);
 
     if (d.n > minPix){
       state.lostT = null;
@@ -187,6 +188,17 @@ function updateCalibInfo(){
   const fieldCm = fieldWidthFromReference(refSizeCm(), segFrac());
   readout.calibInfo('La barra mide ' + fmtCm(refSizeCm()) + ' cm → campo visible: ' + fieldCm.toFixed(1) + ' cm');
 }
+function updateScenarioHint(){
+  const scen = SCENARIOS[state.scenario];
+  let txt = scen.hint;
+  if (state.scenario === 'calle'){
+    const span40 = recommendedRoiSpanM(40).toFixed(1);
+    const span100 = recommendedRoiSpanM(100).toFixed(1);
+    txt += ` Separación A–B recomendada: ≥${span40} m para tránsito urbano (~40 km/h), `
+         + `≥${span100} m para ruta (~100 km/h).`;
+  }
+  readout.scenarioHint(txt);
+}
 function exitCalib(){
   state.calibMode = false;
   controls.setCalibPanelVisible(false);
@@ -240,6 +252,20 @@ controls.setupButtons({
     readout.ptCount(m === 'flow' ? '0 pts' : '—');
   },
 
+  setScenario(s){
+    state.scenario = s;
+    const scen = SCENARIOS[s];
+    controls.setScenarioUI(s);
+    readout.scenarioLabel(s === 'mesa' ? 'objeto chico, cerca' : 'vehículo, cámara fija');
+    controls.populateRefPresets(scen.presets);
+    $('unitSel').value = scen.unit;
+    $('fov').value = scen.defaultFov;
+    readout.unitLabel(scen.unit);
+    updateRoiDist();
+    updateCalibInfo();
+    updateScenarioHint();
+  },
+
   fovInput(){ updateRoiDist(); },
   unitChange(){ updateRoiDist(); readout.unitLabel(unit()); },
 
@@ -288,5 +314,7 @@ controls.setupButtons({
 });
 
 // ---------- Arranque ----------
+controls.populateRefPresets(SCENARIOS[state.scenario].presets);
 updateRoiDist();
+updateScenarioHint();
 sizeCanvases();

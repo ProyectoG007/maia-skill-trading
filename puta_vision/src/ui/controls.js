@@ -50,7 +50,7 @@ export function setupPointerDrag(wrap, state, on){
   });
 }
 
-// handlers: {start, reset, setMode, fovInput, unitChange,
+// handlers: {start, reset, setMode, setScenario, fovInput, unitChange,
 //            calibOpen, calibDetect, calibApply, calibCancel,
 //            refChange, refCustomInput}
 export function setupButtons(handlers){
@@ -58,6 +58,8 @@ export function setupButtons(handlers){
   $('resetBtn').onclick = handlers.reset;
   $('modeDiff').onclick = () => handlers.setMode('diff');
   $('modeFlow').onclick = () => handlers.setMode('flow');
+  $('scenMesa').onclick = () => handlers.setScenario('mesa');
+  $('scenCalle').onclick = () => handlers.setScenario('calle');
   $('fov').oninput = handlers.fovInput;
   $('unitSel').onchange = handlers.unitChange;
   $('calibBtn').onclick = handlers.calibOpen;
@@ -71,6 +73,28 @@ export function setupButtons(handlers){
 export function setModeUI(mode){
   $('modeDiff').classList.toggle('active', mode === 'diff');
   $('modeFlow').classList.toggle('active', mode === 'flow');
+}
+
+export function setScenarioUI(scenario){
+  $('scenMesa').classList.toggle('active', scenario === 'mesa');
+  $('scenCalle').classList.toggle('active', scenario === 'calle');
+}
+
+// Repuebla el <select> de objetos de referencia con los presets del
+// escenario activo, siempre terminando en la opción "Otro…" (tamaño libre).
+export function populateRefPresets(presets){
+  const sel = $('refSel');
+  sel.innerHTML = '';
+  for (const p of presets){
+    const opt = document.createElement('option');
+    opt.value = p.cm;
+    opt.textContent = p.label;
+    sel.appendChild(opt);
+  }
+  const custom = document.createElement('option');
+  custom.value = 'custom';
+  custom.textContent = 'Otro…';
+  sel.appendChild(custom);
 }
 
 export function setCalibPanelVisible(open){

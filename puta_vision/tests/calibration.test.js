@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   segmentLengthFrac, fieldWidthFromReference, roiDistance,
-  crossSpeed, pxPerSecToReal, REF_PRESETS,
+  crossSpeed, pxPerSecToReal, REF_PRESETS, VEHICLE_PRESETS, SCENARIOS,
+  minPixelsForArea, recommendedRoiSpanM,
 } from '../src/core/calibration.js';
 
 test('segmentLengthFrac: barra horizontal es la diferencia simple de x', () => {
@@ -45,4 +46,33 @@ test('los presets de referencia traen los tamaños reales', () => {
   const card = REF_PRESETS.find(p => p.id === 'card');
   assert.equal(card.cm, 8.56);
   assert.ok(REF_PRESETS.every(p => p.cm > 0 && p.label.length > 0));
+});
+
+test('los presets vehiculares están en la escala de calle (metros, como cm)', () => {
+  const sedan = VEHICLE_PRESETS.find(p => p.id === 'sedan');
+  assert.equal(sedan.cm, 450); // 4,5 m
+  assert.ok(VEHICLE_PRESETS.every(p => p.cm > 100)); // todo por encima de 1 m
+});
+
+test('los escenarios MESA y CALLE traen unidad, umbral y presets distintos', () => {
+  assert.equal(SCENARIOS.mesa.unit, 'cm');
+  assert.equal(SCENARIOS.calle.unit, 'm');
+  assert.equal(SCENARIOS.mesa.presets, REF_PRESETS);
+  assert.equal(SCENARIOS.calle.presets, VEHICLE_PRESETS);
+  // CALLE tolera objetos más grandes como piso (ignora ruido chico en tránsito)
+  assert.ok(SCENARIOS.calle.minAreaFrac > SCENARIOS.mesa.minAreaFrac);
+});
+
+test('minPixelsForArea escala la fracción por el tamaño del buffer', () => {
+  assert.equal(minPixelsForArea(0.005, 120, 90), 0.005 * 120 * 90);
+  assert.equal(minPixelsForArea(0.02, 100, 100), 200);
+});
+
+test('recommendedRoiSpanM: más velocidad o menos tolerancia piden más distancia', () => {
+  // 36 km/h = 10 m/s; jitter 5ms / error 5% → dt mínimo 0.1s → 1.0 m
+  assert.ok(Math.abs(recommendedRoiSpanM(36) - 1.0) < 1e-9);
+  // el doble de velocidad pide el doble de distancia para el mismo error
+  assert.ok(Math.abs(recommendedRoiSpanM(72) - 2.0) < 1e-9);
+  // exigir menos error (2%) pide más distancia que tolerar 5%
+  assert.ok(recommendedRoiSpanM(36, { maxErrorFrac: 0.02 }) > recommendedRoiSpanM(36, { maxErrorFrac: 0.05 }));
 });
