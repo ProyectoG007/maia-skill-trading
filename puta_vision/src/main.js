@@ -12,12 +12,14 @@ import { segmentBlobs, BlobTracker } from './core/blobs.js';
 import { computeHomography, invertHomography, applyHomography } from './core/homography.js';
 import { createLogEntry, addEntry, toCSV } from './core/log.js';
 import { Kalman2D } from './core/kalman.js';
+import { createScheduler } from './core/frameLoop.js';
 import { W, openCamera, createProcessor, createSnapshotter } from './ui/camera.js';
 import * as overlay from './ui/overlay.js';
 import * as readout from './ui/readout.js';
 import * as controls from './ui/controls.js';
 import * as history from './ui/history.js';
 import * as storage from './ui/storage.js';
+import { setupInstallBanner } from './ui/installBanner.js';
 
 const MAX_LOG_ENTRIES = 30;
 
@@ -36,6 +38,7 @@ const snapshotter = createSnapshotter();
 const kalman = new Kalman2D();
 let flow = new FlowTracker(W, cam.H);
 let log = storage.loadLog();
+const scheduler = createScheduler(video, requestAnimationFrame, cancelAnimationFrame);
 
 const state = {
   running: false,
@@ -154,7 +157,7 @@ function handleCrossEvent(ev, distReal, distUnit){
 // ---------- Loop principal ----------
 function loop(){
   if (!state.running) return;
-  requestAnimationFrame(loop);
+  scheduler.schedule(loop);
 
   const now = performance.now();
   state.frames++;
@@ -498,3 +501,8 @@ updateRoiDist();
 updateScenarioHint();
 history.render(log);
 sizeCanvases();
+
+setupInstallBanner($('installBanner'), $('installBtn'), $('installDismiss'));
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+}

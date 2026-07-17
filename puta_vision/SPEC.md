@@ -153,7 +153,7 @@ El salto de "aproximado" a "confiable" cuando la cámara no está perpendicular.
 - **Aceptación:** test sintético de LK piramidal recuperando traslaciones
   grandes (5–8 px/frame) que el LK actual pierde.
 
-### Fase 6 — PWA + captura a 60 FPS
+### Fase 6 — PWA + captura a 60 FPS ✅ **hecha**
 - **Core/infra:** `manifest.json` + `sw.js` (cache de la app para uso
   offline); migrar el loop a `requestVideoFrameCallback` con fallback a
   `requestAnimationFrame`.

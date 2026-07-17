@@ -259,6 +259,29 @@ calidad de la medición:
   reinicia solo si el espacio cambia entre frames, o si el objeto se pierde,
   para no arrastrar una velocidad estimada de otro objeto o de otra escala.
 
+### PWA + captura a mayor FPS
+
+- **Instalable y offline** — `manifest.json` describe el ícono, el color de
+  tema y el modo `standalone`; `sw.js` (service worker) precachea todo el
+  app shell (HTML, CSS, los módulos de `src/`, el ícono) en el evento
+  `install` con cache-first en `fetch`, así que una vez visitada la app abre
+  sin conexión. El cache se versiona a mano (`CACHE_VERSION` en `sw.js`): al
+  cambiar un archivo precacheado hay que subir la versión para que el
+  service worker viejo se reemplace (se borra en `activate`). Aparece un
+  banner "📲 Instalá el radar…" cuando el navegador dispara
+  `beforeinstallprompt` (Chrome/Android); en iOS Safari, que no dispara ese
+  evento, el banner simplemente no aparece — instalar ahí sigue siendo
+  Compartir → Agregar a inicio, manual.
+- **`requestVideoFrameCallback` (rVFC)** reemplaza `requestAnimationFrame`
+  (rAF) para programar el loop de análisis cuando el navegador lo soporta
+  (Chrome/Android). rAF dispara con el repintado de pantalla, que no está
+  sincronizado con la llegada de frames nuevos del video — se puede procesar
+  el mismo frame dos veces o saltarse uno. rVFC dispara justo cuando el
+  `<video>` decodificó un frame nuevo, dando FPS de análisis más altos y
+  estables en los dispositivos que lo implementan. Sin rVFC (Safari viejo,
+  algunos WebViews) `createScheduler` cae a rAF automáticamente — mismo
+  comportamiento que antes de F6, sin rama especial en el resto del código.
+
 ### Escenario MESA / CALLE
 
 Toggle arriba del video (debajo de DIFF/FLOW). Cambia tres cosas a la vez para
@@ -311,6 +334,9 @@ cronómetro de cruce queda pausado.
 - La diferencia de frames es sensible a **cambios bruscos de luz** (sombras, flicker
   de tubos fluorescentes) y a que la cámara se mueva: trípode o apoyo firme.
 - La calibración manual asume distancia constante al plano de movimiento.
+- El ícono de la PWA es un SVG único (sin build no hay forma cómoda de generar
+  PNGs en varios tamaños): funciona bien en Android/Chrome; en iOS el ícono de
+  pantalla de inicio puede no rasterizarse igual de nítido según la versión.
 
 ## Roadmap — de MVP a sistema avanzado
 
@@ -333,13 +359,13 @@ En orden de relación esfuerzo/impacto:
 5. **Corrección de perspectiva (homografía)** — marcar 4 puntos de referencia en el
    piso y medir sobre el plano real en vez del plano de imagen. Es lo que separa un
    juguete de un radar de tránsito.
-6. **PWA** — manifest + service worker para instalarlo en la pantalla de inicio y
-   que funcione offline.
-7. **Filtro de Kalman** sobre la trayectoria del centroide — suaviza el ruido de
-   detección sin el retardo de una EMA.
-8. **`requestVideoFrameCallback`** — sincronizar el procesamiento con los frames
-   reales del sensor (hasta 60 FPS en muchos celulares) en vez de con el repintado
-   de pantalla.
+6. ~~**PWA**~~ — ✅ **hecho**: manifest + service worker para instalarlo en la
+   pantalla de inicio y que funcione offline.
+7. ~~**Filtro de Kalman**~~ — ✅ **hecho**: sobre la trayectoria del centroide,
+   suaviza el ruido de detección sin el retardo de una EMA.
+8. ~~**`requestVideoFrameCallback`**~~ — ✅ **hecho**: sincroniza el
+   procesamiento con los frames reales del sensor (con fallback automático a
+   `requestAnimationFrame` donde no está soportado).
 
 ## Estructura
 
@@ -349,6 +375,9 @@ Módulos ES nativos, sin bundler ni dependencias (ver SPEC.md, Fase 0):
 puta_vision/
 ├── index.html              ← estructura HTML + carga de módulos
 ├── styles.css              ← estilos
+├── manifest.json           ← metadatos de instalación PWA
+├── sw.js                   ← service worker: cache offline del app shell
+├── icon.svg                ← ícono de la app (manifest + favicon)
 ├── src/
 │   ├── core/               ← lógica pura (sin DOM, testeable en Node)
 │   │   ├── crossing.js     ← máquina de estados A→B + interpolación de cruce
@@ -358,6 +387,7 @@ puta_vision/
 │   │   ├── homography.js   ← corrección de perspectiva: DLT 4-puntos
 │   │   ├── log.js          ← registro de mediciones + serialización CSV
 │   │   ├── kalman.js       ← filtro de Kalman 2D de velocidad constante
+│   │   ├── frameLoop.js    ← scheduler rVFC con fallback a rAF
 │   │   └── diff.js         ← diferencia de frames, centroide, mancha brillante
 │   ├── ui/
 │   │   ├── camera.js       ← getUserMedia + buffer de proceso + foto-finish
@@ -365,7 +395,8 @@ puta_vision/
 │   │   ├── controls.js     ← botones, toggles, arrastre
 │   │   ├── readout.js      ← números y estados en pantalla
 │   │   ├── history.js      ← panel de historial con miniaturas
-│   │   └── storage.js      ← persistencia del registro en localStorage
+│   │   ├── storage.js      ← persistencia del registro en localStorage
+│   │   └── installBanner.js ← banner "instalar en pantalla de inicio"
 │   └── main.js             ← wiring: estado de la app + loop principal
 ├── tests/                  ← node --test (sin dependencias)
 ├── package.json            ← solo type:module + script de test
@@ -378,7 +409,7 @@ Regla de arquitectura: `core/` nunca importa de `ui/`.
 ### Tests
 
 ```
-cd puta_vision && npm test          # 63 tests de los módulos core
+cd puta_vision && npm test          # 69 tests de los módulos core
 ```
 
 Para desplegar alcanza con servir la carpeta por HTTPS (Vercel, Netlify,

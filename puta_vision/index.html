@@ -5,12 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Radar — Medidor de velocidad v4</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#10151c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 <header>
   <h1>◉ RADAR v4</h1>
   <span id="status">CÁMARA APAGADA</span>
 </header>
+
+<div id="installBanner" class="installBanner" hidden>
+  <span>📲 Instalá el radar en tu pantalla de inicio para abrirlo sin conexión.</span>
+  <div class="installBtns">
+    <button id="installBtn" class="primary">INSTALAR</button>
+    <button id="installDismiss">✕</button>
+  </div>
+</div>
 
 <div class="videoWrap" id="videoWrap">
   <video id="video" autoplay playsinline muted></video>
