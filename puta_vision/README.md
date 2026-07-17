@@ -81,6 +81,25 @@ líneas multiplicada por ese valor (se muestra en vivo bajo el campo de calibrac
 Para que sea válida, la cámara tiene que estar **fija** y el movimiento ocurrir
 aproximadamente **a la distancia calibrada y perpendicular a la cámara**.
 
+### Auto-calibración con objeto de referencia
+
+Con **📐 AUTO-CALIBRAR CON OBJETO** no hace falta medir la escena con cinta métrica:
+
+1. Poné un objeto de tamaño conocido **en el plano donde va a pasar lo que medís**
+   (hoja A4, tarjeta de crédito, CD, o cualquier cosa cuyo tamaño ingreses en "Otro…").
+2. Tocá **⌖ DETECTAR**: el radar busca la mancha brillante más grande del encuadre
+   (umbral adaptativo sobre la luminancia media + componente conexa más grande por BFS)
+   y ajusta la barra de medición a su ancho. Funciona mejor con un objeto claro contra
+   fondo más oscuro; si no detecta nada, arrastrá las manijas de la barra a mano sobre
+   los bordes del objeto.
+3. Tocá **✓ APLICAR**: de la fracción del encuadre que ocupa la barra sale el ancho
+   real del campo visible (`campo = tamaño_referencia / fracción`), y el valor se
+   carga solo en la calibración (convertido a metros si estás midiendo en km/h).
+
+La barra se puede inclinar: el largo se calcula en distancia euclídea real, así que
+un objeto apoyado en diagonal calibra igual de bien. Durante la calibración el
+cronómetro de cruce queda pausado.
+
 ## Limitaciones conocidas
 
 - Mide velocidad **en el plano de la imagen**: el movimiento hacia/desde la cámara
@@ -99,9 +118,9 @@ En orden de relación esfuerzo/impacto:
    por seguimiento de features. Mucho más robusto con fondos texturados y luz cambiante.
    Implementable en JS puro (~80 líneas) para no perder el "cero dependencias"
    (OpenCV.js resolvería lo mismo pero pesa ~8 MB).
-2. **Auto-calibración con objeto de referencia** — mostrar una hoja A4 o una moneda
-   a la cámara y deducir la escala automáticamente. Elimina el paso manual, la mayor
-   fuente de error del usuario.
+2. ~~**Auto-calibración con objeto de referencia**~~ — ✅ **hecho**: detección
+   automática del objeto por umbral adaptativo + barra ajustable a mano, con presets
+   (A4, tarjeta, CD) y tamaño personalizado.
 3. **Multi-objeto** — segmentar los píxeles en movimiento en blobs (componentes
    conexas) y asignar un ID por objeto. Habilita medir varios cruces simultáneos
    y filtrar ruido por tamaño de blob.
