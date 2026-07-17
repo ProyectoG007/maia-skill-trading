@@ -1,0 +1,70 @@
+// Dibujo sobre el video (líneas A/B, barra de calibración, puntos de flow,
+// retículo) y el gráfico de historial. Solo canvas: recibe todo por parámetro.
+
+export function drawLines(ctx, w, h, lineA, lineB, timing){
+  [[lineA,'A'],[lineB,'B']].forEach(([f,name])=>{
+    const x = f * w;
+    ctx.strokeStyle = timing ? 'rgba(255,180,84,.95)' : 'rgba(95,212,196,.85)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10,8]);
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke();
+    ctx.setLineDash([]);
+    // etiqueta
+    ctx.fillStyle = timing ? '#ffb454' : '#5fd4c4';
+    ctx.font = 'bold 16px monospace';
+    ctx.fillText(name, x+6, 22);
+    // manija de arrastre
+    ctx.beginPath(); ctx.arc(x, h-24, 12, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(22,29,39,.9)'; ctx.fill();
+    ctx.strokeStyle = timing ? '#ffb454' : '#5fd4c4'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = timing ? '#ffb454' : '#5fd4c4';
+    ctx.fillText('⇔', x-8, h-18);
+  });
+}
+
+export function drawCalibBar(ctx, w, h, p1, p2, label){
+  const x1 = p1.x*w, y1 = p1.y*h, x2 = p2.x*w, y2 = p2.y*h;
+  ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  [[x1,y1],[x2,y2]].forEach(([x,y])=>{
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(22,29,39,.85)'; ctx.fill();
+    ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#ffb454'; ctx.fill();
+  });
+  ctx.fillStyle = '#ffb454'; ctx.font = 'bold 14px monospace';
+  ctx.fillText(label, (x1+x2)/2 - ctx.measureText(label).width/2, Math.min(y1,y2) - 12);
+}
+
+export function drawFlowPoints(ctx, w, h, points, procW, procH){
+  ctx.fillStyle = 'rgba(95,212,196,.8)';
+  for (const p of points){
+    ctx.beginPath();
+    ctx.arc(p.x/procW*w, p.y/procH*h, 2.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+export function drawCrosshair(ctx, w, h, cx, cy, procW, procH){
+  const x = cx/procW*w, y = cy/procH*h;
+  ctx.strokeStyle = '#ffb454'; ctx.fillStyle = 'rgba(255,180,84,.9)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x-26,y); ctx.lineTo(x-18,y); ctx.moveTo(x+18,y); ctx.lineTo(x+26,y);
+  ctx.moveTo(x,y-26); ctx.lineTo(x,y-18); ctx.moveTo(x,y+18); ctx.lineTo(x,y+26);
+  ctx.stroke();
+}
+
+export function drawChart(ctx, w, h, history){
+  ctx.clearRect(0, 0, w, h);
+  const peak = Math.max(...history, 1);
+  ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 3; ctx.beginPath();
+  history.forEach((val,i)=>{
+    const x = i/(history.length-1)*w;
+    const y = h - (val/peak)*(h-14) - 6;
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}

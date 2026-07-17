@@ -199,11 +199,38 @@ En orden de relación esfuerzo/impacto:
 
 ## Estructura
 
+Módulos ES nativos, sin bundler ni dependencias (ver SPEC.md, Fase 0):
+
 ```
 puta_vision/
-├── index.html   ← toda la app: HTML + CSS + JS, sin dependencias
-└── README.md
+├── index.html              ← estructura HTML + carga de módulos
+├── styles.css              ← estilos
+├── src/
+│   ├── core/               ← lógica pura (sin DOM, testeable en Node)
+│   │   ├── crossing.js     ← máquina de estados A→B + interpolación de cruce
+│   │   ├── calibration.js  ← escala px→unidades, presets, conversiones
+│   │   ├── flow.js         ← Lucas-Kanade: corners, tracking, resiembra
+│   │   └── diff.js         ← diferencia de frames, centroide, mancha brillante
+│   ├── ui/
+│   │   ├── camera.js       ← getUserMedia + buffer de proceso
+│   │   ├── overlay.js      ← dibujo: líneas, barra, puntos, retículo, gráfico
+│   │   ├── controls.js     ← botones, toggles, arrastre
+│   │   └── readout.js      ← números y estados en pantalla
+│   └── main.js             ← wiring: estado de la app + loop principal
+├── tests/                  ← node --test (sin dependencias)
+├── package.json            ← solo type:module + script de test
+├── README.md
+└── SPEC.md                 ← plan de evolución del sistema
 ```
 
-Para desplegar alcanza con servir `index.html` por HTTPS (Vercel, Netlify,
-GitHub Pages — cualquiera sirve tal cual, sin build).
+Regla de arquitectura: `core/` nunca importa de `ui/`.
+
+### Tests
+
+```
+cd puta_vision && npm test          # 27 tests de los módulos core
+```
+
+Para desplegar alcanza con servir la carpeta por HTTPS (Vercel, Netlify,
+GitHub Pages — sirve tal cual, sin build). Al usar módulos ES, ya no se puede
+abrir como `file://` — hace falta un servidor (local: `python3 -m http.server`).

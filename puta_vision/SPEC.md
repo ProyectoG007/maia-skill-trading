@@ -87,7 +87,7 @@ Notas:
 Orden por relación esfuerzo/impacto. Cada fase lista primero el core y después
 la UI, según la metodología.
 
-### Fase 0 — Refactor a módulos *(habilitador, sin features nuevas)*
+### Fase 0 — Refactor a módulos *(habilitador, sin features nuevas)* ✅ **hecha**
 Extraer el código actual del `index.html` a la estructura de arriba, sin
 cambiar comportamiento.
 - **Core:** mover `crossing`, `calibration`, `flow`, `diff` a `src/core/` como
