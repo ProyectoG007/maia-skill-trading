@@ -1,6 +1,8 @@
 // Dibujo sobre el video (líneas A/B, barra de calibración, puntos de flow,
 // retículo) y el gráfico de historial. Solo canvas: recibe todo por parámetro.
 
+import { applyHomography } from '../core/homography.js';
+
 export function drawLines(ctx, w, h, lineA, lineB, timing){
   [[lineA,'A'],[lineB,'B']].forEach(([f,name])=>{
     const x = f * w;
@@ -35,6 +37,44 @@ export function drawCalibBar(ctx, w, h, p1, p2, label){
   });
   ctx.fillStyle = '#ffb454'; ctx.font = 'bold 14px monospace';
   ctx.fillText(label, (x1+x2)/2 - ctx.measureText(label).width/2, Math.min(y1,y2) - 12);
+}
+
+// Cuadrilátero de 4 puntos (fracción de encuadre 0..1) que el usuario ajusta
+// sobre un rectángulo real conocido, con manijas de arrastre en cada esquina.
+export function drawPerspQuad(ctx, w, h, points){
+  ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = p.x*w, y = p.y*h;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.closePath(); ctx.stroke();
+  points.forEach(p => {
+    const x = p.x*w, y = p.y*h;
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(22,29,39,.85)'; ctx.fill();
+    ctx.strokeStyle = '#ffb454'; ctx.lineWidth = 2; ctx.stroke();
+  });
+}
+
+// Grilla de verificación cada metro sobre el plano real marcado, proyectada
+// de vuelta a la imagen con la inversa de la homografía — si el cuadrado
+// está bien calibrado, se ve como una grilla de perspectiva prolija sobre
+// la calzada real; si está torcida, delata que hay que reajustar el plano.
+export function drawPerspGrid(ctx, w, h, Hinv, widthM, lengthM, procW, procH){
+  if (!Hinv) return;
+  const toScreen = (X, Y) => {
+    const p = applyHomography(Hinv, X, Y);
+    return p ? { x: p.x/procW*w, y: p.y/procH*h } : null;
+  };
+  const seg = (x1, y1, x2, y2) => {
+    const a = toScreen(x1, y1), b = toScreen(x2, y2);
+    if (!a || !b) return;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  };
+  ctx.strokeStyle = 'rgba(95,212,196,.55)'; ctx.lineWidth = 1;
+  for (let x = 0; x <= lengthM + 1e-9; x++) seg(x, 0, x, widthM);
+  for (let y = 0; y <= widthM + 1e-9; y++) seg(0, y, lengthM, y);
 }
 
 // Recuadros de todos los objetos en movimiento detectados este frame; el

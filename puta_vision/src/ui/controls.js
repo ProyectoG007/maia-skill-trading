@@ -4,13 +4,15 @@
 
 const $ = id => document.getElementById(id);
 
-// state: {lineA, lineB, calibMode, calP1, calP2} (leído en vivo del llamador)
-// on: {linesChanged, calibChanged, dragEnd, blobTap?}
+// state: {lineA, lineB, calibMode, calP1, calP2, perspMode, perspPoints}
+// (leído en vivo del llamador)
+// on: {linesChanged, calibChanged, dragEnd, blobTap?, perspChanged}
 // blobTap(fx, fy) se dispara con un toque que no arrastró ninguna línea ni la
 // barra de calibración — se interpreta como "elegí este objeto para medir".
 export function setupPointerDrag(wrap, state, on){
   let dragging = null;  // 'A' | 'B'
   let calDrag = null;   // referencia a calP1/calP2
+  let perspDrag = null; // referencia a uno de los 4 state.perspPoints
   let tap = null;       // {fx, fy} de un pointerdown que podría ser un toque
 
   wrap.addEventListener('pointerdown', e => {
@@ -22,6 +24,18 @@ export function setupPointerDrag(wrap, state, on){
       const d2 = Math.hypot(fx - state.calP2.x, fy - state.calP2.y);
       if (Math.min(d1, d2) < 0.15){
         calDrag = d1 < d2 ? state.calP1 : state.calP2;
+        wrap.setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+    if (state.perspMode){
+      let best = null, bestD = Infinity;
+      for (const p of state.perspPoints){
+        const d = Math.hypot(fx - p.x, fy - p.y);
+        if (d < bestD){ bestD = d; best = p; }
+      }
+      if (bestD < 0.15){
+        perspDrag = best;
         wrap.setPointerCapture(e.pointerId);
       }
       return;
@@ -43,6 +57,12 @@ export function setupPointerDrag(wrap, state, on){
       on.calibChanged();
       return;
     }
+    if (perspDrag){
+      perspDrag.x = Math.min(0.98, Math.max(0.02, (e.clientX - r.left) / r.width));
+      perspDrag.y = Math.min(0.98, Math.max(0.02, (e.clientY - r.top) / r.height));
+      on.perspChanged();
+      return;
+    }
     if (dragging){
       const fx = Math.min(0.95, Math.max(0.05, (e.clientX - r.left) / r.width));
       if (dragging === 'A') state.lineA = fx; else state.lineB = fx;
@@ -58,6 +78,7 @@ export function setupPointerDrag(wrap, state, on){
 
   wrap.addEventListener('pointerup', () => {
     if (calDrag){ calDrag = null; return; }
+    if (perspDrag){ perspDrag = null; return; }
     if (dragging){ dragging = null; on.dragEnd(); return; }
     if (tap){ on.blobTap(tap.fx, tap.fy); tap = null; }
   });
@@ -65,7 +86,8 @@ export function setupPointerDrag(wrap, state, on){
 
 // handlers: {start, reset, setMode, setScenario, fovInput, unitChange,
 //            calibOpen, calibDetect, calibApply, calibCancel,
-//            refChange, refCustomInput}
+//            refChange, refCustomInput,
+//            setMeas, perspOpen, perspApply, perspCancel, perspDimsInput}
 export function setupButtons(handlers){
   $('startBtn').onclick = handlers.start;
   $('resetBtn').onclick = handlers.reset;
@@ -81,6 +103,13 @@ export function setupButtons(handlers){
   $('calCancel').onclick = handlers.calibCancel;
   $('refSel').onchange = handlers.refChange;
   $('refCustom').oninput = handlers.refCustomInput;
+  $('measFov').onclick = () => handlers.setMeas('fov');
+  $('measPlano').onclick = () => handlers.setMeas('plano');
+  $('perspBtn').onclick = handlers.perspOpen;
+  $('perspApply').onclick = handlers.perspApply;
+  $('perspCancel').onclick = handlers.perspCancel;
+  $('perspWidth').oninput = handlers.perspDimsInput;
+  $('perspLength').oninput = handlers.perspDimsInput;
 }
 
 export function setModeUI(mode){
@@ -113,6 +142,16 @@ export function populateRefPresets(presets){
 export function setCalibPanelVisible(open){
   $('calibPanel').hidden = !open;
   $('calibBtn').hidden = open;
+}
+
+export function setMeasUI(mode){
+  $('measFov').classList.toggle('active', mode === 'fov');
+  $('measPlano').classList.toggle('active', mode === 'plano');
+}
+
+export function setPerspPanelVisible(open){
+  $('perspPanel').hidden = !open;
+  $('perspBtn').hidden = open;
 }
 
 export function setStartButton(running){

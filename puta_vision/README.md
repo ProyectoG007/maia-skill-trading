@@ -163,6 +163,50 @@ fantasma entre ambos. Ahora:
    elegido**, no sobre toda el área en movimiento del frame — así que FLOW
    ya no mezcla puntos de dos objetos distintos cuando hay más de uno.
 
+### Corrección de perspectiva (homografía de 4 puntos)
+
+El modelo de calibración por defecto (`fov` + líneas A–B) asume que la
+cámara está **perpendicular** a la calzada y que todo el movimiento ocurre
+a la distancia calibrada — razonable con una mesa, pero en la calle la
+cámara casi siempre está en ángulo, y distintos puntos de la calzada están
+a distinta distancia real de la cámara. La corrección de perspectiva
+reemplaza ese modelo por una proyección real del plano de la calle.
+
+1. Tocá **🔲 MARCAR / AJUSTAR PLANO**. Sobre el video aparece un
+   cuadrilátero ámbar de 4 esquinas arrastrables.
+2. Arrastrá cada esquina para que coincida con las 4 puntas de un
+   rectángulo real conocido de la escena — típicamente un tramo de carril
+   (dos líneas de cordón + dos marcas transversales separadas una
+   distancia conocida). Mientras ajustás, se dibuja en vivo una **grilla de
+   verificación cada metro**: si la grilla se ve prolija sobre la calzada
+   real, el plano está bien marcado; si se ve torcida, hay que reajustar
+   las esquinas.
+3. Ingresá el **ancho** y **largo** reales del rectángulo en metros (por
+   ejemplo, 3,5 m de ancho de carril × 10 m de tramo).
+4. Tocá **✓ APLICAR**. El toggle **FOV / PLANO** pasa a PLANO automáticamente.
+
+Con PLANO activo, la posición del objeto medido se convierte de píxeles de
+imagen a coordenadas reales del plano (metros) en cada frame vía la
+homografía, y la velocidad —tanto la continua como la del cruce A→B— se
+calcula directamente en esas coordenadas reales. El cruce ya no necesita
+las líneas A/B de pantalla: los bordes cercano y lejano del rectángulo
+marcado **son** las dos líneas de medición (separadas exactamente el largo
+ingresado), reutilizando sin cambios la misma máquina de estados de cruce.
+
+Podés volver a **FOV** en cualquier momento con el toggle, sin perder el
+plano marcado (basta con tocar PLANO de nuevo para reactivarlo, no hace
+falta re-marcar las esquinas salvo que quieras ajustarlas).
+
+**Matemática:** `computeHomography` resuelve la homografía 3×3 (con
+`h33=1`) que lleva las 4 esquinas de imagen a las 4 esquinas reales por
+eliminación gaussiana con pivoteo parcial sobre el sistema lineal de 8
+ecuaciones que define el DLT (Direct Linear Transform) — devuelve `null`
+ante puntos degenerados (3 o más colineales, que no determinan un
+rectángulo). `applyHomography` proyecta cualquier punto de imagen al plano
+real con la división proyectiva estándar; `invertHomography` calcula la
+inversa (adjugada/determinante) para proyectar la grilla de verificación de
+vuelta a la imagen.
+
 ### Escenario MESA / CALLE
 
 Toggle arriba del video (debajo de DIFF/FLOW). Cambia tres cosas a la vez para
@@ -259,6 +303,7 @@ puta_vision/
 │   │   ├── calibration.js  ← escala px→unidades, presets, conversiones
 │   │   ├── flow.js         ← Lucas-Kanade: corners, tracking, resiembra
 │   │   ├── blobs.js        ← segmentación multi-objeto + tracking por id
+│   │   ├── homography.js   ← corrección de perspectiva: DLT 4-puntos
 │   │   └── diff.js         ← diferencia de frames, centroide, mancha brillante
 │   ├── ui/
 │   │   ├── camera.js       ← getUserMedia + buffer de proceso
@@ -277,7 +322,7 @@ Regla de arquitectura: `core/` nunca importa de `ui/`.
 ### Tests
 
 ```
-cd puta_vision && npm test          # 40 tests de los módulos core
+cd puta_vision && npm test          # 47 tests de los módulos core
 ```
 
 Para desplegar alcanza con servir la carpeta por HTTPS (Vercel, Netlify,

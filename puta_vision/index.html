@@ -37,6 +37,14 @@
   <span id="blobInfo">— objetos detectados</span>
 </div>
 
+<div class="trackBar">
+  <div class="seg">
+    <button id="measFov" data-meas="fov" class="active">FOV</button>
+    <button id="measPlano" data-meas="plano">PLANO</button>
+  </div>
+  <span id="perspStatusLabel">sin marcar</span>
+</div>
+
 <div class="readout">
   <div class="lbl">VELOCIDAD DE CRUCE A → B</div>
   <div><span id="roiSpeed">—</span><span id="roiUnit">cm/s</span></div>
@@ -79,6 +87,25 @@
   </div>
 </div>
 
+<div class="calib">
+  <label>CORRECCIÓN DE PERSPECTIVA — para cámara en ángulo (no perpendicular a la calzada)</label>
+  <button id="perspBtn">🔲 MARCAR / AJUSTAR PLANO</button>
+  <div id="perspPanel" hidden>
+    <label>Medidas reales del rectángulo marcado (ej. un tramo de carril)</label>
+    <div class="calRow">
+      <span>Ancho</span>
+      <input type="number" id="perspWidth" value="3.5" min="0.1" step="0.1" title="ancho en metros">
+      <span>Largo</span>
+      <input type="number" id="perspLength" value="10" min="0.1" step="0.1" title="largo en metros">
+    </div>
+    <div id="perspInfo"></div>
+    <div class="btns">
+      <button class="primary" id="perspApply">✓ APLICAR</button>
+      <button id="perspCancel">✕</button>
+    </div>
+  </div>
+</div>
+
 <div class="btns">
   <button class="primary" id="startBtn">▶ INICIAR</button>
   <button id="resetBtn">RESET</button>
@@ -96,6 +123,10 @@
   Con varios objetos moviéndose a la vez, el radar elige el más grande por
   defecto — <b>tocá un recuadro cian</b> sobre el video para medir ese en
   cambio; se pone ámbar mientras es el elegido.
+  Si la cámara no está perpendicular a la calle, usá <b>🔲 MARCAR PLANO</b>:
+  arrastrá las 4 esquinas sobre un rectángulo real conocido, poné sus
+  medidas y aplicá — el toggle <b>FOV/PLANO</b> elige qué modelo de medición
+  usar.
 </p>
 
 <script type="module" src="src/main.js"></script>

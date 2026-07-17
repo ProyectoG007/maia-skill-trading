@@ -9,6 +9,7 @@ import {
 } from './core/calibration.js';
 import { FlowTracker } from './core/flow.js';
 import { segmentBlobs, BlobTracker } from './core/blobs.js';
+import { computeHomography, invertHomography, applyHomography } from './core/homography.js';
 import { W, openCamera, createProcessor } from './ui/camera.js';
 import * as overlay from './ui/overlay.js';
 import * as readout from './ui/readout.js';
@@ -43,6 +44,17 @@ const state = {
   lostT: null,
   selectedBlobId: null,     // null = elegir automáticamente el más grande
   lastBlobs: [],            // para dibujar todos los recuadros detectados
+  perspMode: false,         // panel de marcado de plano abierto
+  perspPoints: [            // 4 esquinas (fracción de encuadre), orden:
+    {x:0.15, y:0.85},       // cerca-izquierda
+    {x:0.85, y:0.85},       // cerca-derecha
+    {x:0.65, y:0.35},       // lejos-derecha
+    {x:0.35, y:0.35},       // lejos-izquierda
+  ],
+  perspPreview: null,       // {H,Hinv,widthM,lengthM} en vivo mientras se ajusta
+  perspective: null,        // {H,Hinv,widthM,lengthM} aplicado
+  perspectiveOn: false,     // toggle FOV/PLANO
+  prevWorld: null,          // última posición real (m) para la velocidad continua
 };
 
 const fov = () => parseFloat($('fov').value) || 50;
@@ -75,6 +87,13 @@ function drawFrame(cx, cy){
     overlay.drawCalibBar(octx, w, h, state.calP1, state.calP2, fmtCm(refSizeCm()) + ' cm');
     return;
   }
+  if (state.perspMode){
+    overlay.drawPerspQuad(octx, w, h, state.perspPoints);
+    if (state.perspPreview){
+      overlay.drawPerspGrid(octx, w, h, state.perspPreview.Hinv, state.perspPreview.widthM, state.perspPreview.lengthM, W, cam.H);
+    }
+    return;
+  }
   overlay.drawLines(octx, w, h, state.lineA, state.lineB, crossing.state === 'timing');
   if (state.lastBlobs.length > 1){
     overlay.drawBlobs(octx, w, h, state.lastBlobs, state.selectedBlobId, W, cam.H);
@@ -91,12 +110,12 @@ function resetCross(){
   readout.roiState('ESPERANDO OBJETO', '');
 }
 
-function handleCrossEvent(ev){
+function handleCrossEvent(ev, distReal, distUnit){
   if (!ev) return;
   if (ev.type === 'armed'){
     readout.roiState('⏱ CRONOMETRANDO ' + ev.dir, 'timing');
   } else if (ev.type === 'measured'){
-    const v = crossSpeed(roiDistance(state.lineA, state.lineB, fov()), ev.dtSec, unit());
+    const v = crossSpeed(distReal, ev.dtSec, distUnit);
     readout.measurement(v, ev.dtSec);
     if (v > state.maxCross){ state.maxCross = v; readout.max(v); }
     readout.roiState('✓ MEDIDO — listo para el próximo', 'done');
@@ -154,23 +173,42 @@ function loop(){
         readout.ptCount(flow.points.length + ' pts');
       }
 
+      // posición en el plano real si la corrección de perspectiva está activa
+      const usingPersp = state.perspectiveOn && state.perspective;
+      const worldPos = usingPersp ? applyHomography(state.perspective.H, cx, cy) : null;
+
       // velocidad continua (secundaria)
       if (state.prevT){
         const dt = (now - state.prevT)/1000;
-        const pxPerSec = flowPxPerSec !== null ? flowPxPerSec
-          : (state.prevCx !== null ? Math.hypot(cx-state.prevCx, cy-state.prevCy) / dt : 0);
-        const real = pxPerSecToReal(pxPerSec, fov(), W, unit());
+        let real;
+        if (worldPos && state.prevWorld){
+          const distM = Math.hypot(worldPos.x - state.prevWorld.x, worldPos.y - state.prevWorld.y);
+          real = crossSpeed(distM, dt, 'm');
+        } else {
+          const pxPerSec = flowPxPerSec !== null ? flowPxPerSec
+            : (state.prevCx !== null ? Math.hypot(cx-state.prevCx, cy-state.prevCy) / dt : 0);
+          real = pxPerSecToReal(pxPerSec, fov(), W, unit());
+        }
         state.ema = state.ema*0.6 + real*0.4;
       }
       state.prevCx = cx; state.prevCy = cy; state.prevT = now;
+      state.prevWorld = worldPos;
 
       // máquina de estados del cruce (pausada durante calibración)
       if (!state.calibMode){
-        handleCrossEvent(crossing.update(cx / W, now, state.lineA, state.lineB));
+        if (worldPos){
+          const fxWorld = worldPos.x / state.perspective.lengthM;
+          handleCrossEvent(crossing.update(fxWorld, now, 0, 1), state.perspective.lengthM, 'm');
+        } else {
+          handleCrossEvent(
+            crossing.update(cx / W, now, state.lineA, state.lineB),
+            roiDistance(state.lineA, state.lineB, fov()), unit(),
+          );
+        }
       }
     } else {
       state.ema *= 0.85;
-      if (state.ema < 0.05){ state.ema = 0; state.prevCx = null; }
+      if (state.ema < 0.05){ state.ema = 0; state.prevCx = null; state.prevWorld = null; }
       // si el objeto desapareció, olvidar su última posición tras 0.5s
       // (evita "cruces" falsos cuando reaparece en otro lado)
       if (state.lostT === null) state.lostT = now;
@@ -224,15 +262,51 @@ function exitCalib(){
   if (!state.running) drawFrame(null, null);
 }
 
+// ---------- Corrección de perspectiva (homografía de 4 puntos) ----------
+// Puntos marcados (fracción de encuadre) → espacio de píxeles del buffer de
+// proceso, mismo sistema de coordenadas que usan los centroides de blobs.
+function perspSrcPx(){
+  return state.perspPoints.map(p => ({ x: p.x * W, y: p.y * cam.H }));
+}
+function perspDstM(widthM, lengthM){
+  // orden: cerca-izq(0,0), cerca-der(0,ancho), lejos-der(largo,ancho), lejos-izq(largo,0)
+  return [
+    { x: 0, y: 0 }, { x: 0, y: widthM },
+    { x: lengthM, y: widthM }, { x: lengthM, y: 0 },
+  ];
+}
+function computePersp(){
+  const widthM = parseFloat($('perspWidth').value) || 3.5;
+  const lengthM = parseFloat($('perspLength').value) || 10;
+  const H = computeHomography(perspSrcPx(), perspDstM(widthM, lengthM));
+  if (!H) return null;
+  const Hinv = invertHomography(H);
+  if (!Hinv) return null;
+  return { H, Hinv, widthM, lengthM };
+}
+function updatePerspPreview(){
+  state.perspPreview = computePersp();
+  readout.perspInfo(state.perspPreview
+    ? `Plano: ${state.perspPreview.widthM} × ${state.perspPreview.lengthM} m — listo para aplicar`
+    : 'Ajustá las 4 esquinas: no forman un rectángulo válido');
+  if (!state.running) drawFrame(null, null);
+}
+function exitPersp(){
+  state.perspMode = false;
+  controls.setPerspPanelVisible(false);
+  if (!state.running) drawFrame(null, null);
+}
+
 // ---------- Botones y arrastre ----------
 controls.setupPointerDrag(wrap, state, {
   linesChanged(){ updateRoiDist(); if (!state.running) drawFrame(null, null); },
   calibChanged(){ updateCalibInfo(); if (!state.running) drawFrame(null, null); },
   dragEnd(){ resetCross(); },
   blobTap(fx, fy){
-    if (state.calibMode) return;
+    if (state.calibMode || state.perspMode) return;
     state.selectedBlobId = blobTracker.hitTest(fx, fy, W, cam.H);
   },
+  perspChanged(){ updatePerspPreview(); },
 });
 
 controls.setupButtons({
@@ -249,7 +323,7 @@ controls.setupButtons({
       requestAnimationFrame(sizeCanvases);
       state.running = true;
       state.prev = null; state.grayPrev = null;
-      state.prevCx = null; state.prevT = null;
+      state.prevCx = null; state.prevT = null; state.prevWorld = null;
       flow.clear();
       blobTracker.reset();
       state.selectedBlobId = null;
@@ -299,6 +373,7 @@ controls.setupButtons({
       alert('Primero iniciá la cámara, después calibrá.');
       return;
     }
+    if (state.perspMode) exitPersp();
     state.calibMode = true;
     controls.setCalibPanelVisible(true);
     readout.roiState('📐 CALIBRANDO — alineá la barra con el objeto', 'timing');
@@ -336,6 +411,44 @@ controls.setupButtons({
     updateCalibInfo();
   },
   refCustomInput(){ updateCalibInfo(); },
+
+  setMeas(mode){
+    if (mode === 'plano' && !state.perspective){
+      // nada aplicado todavía: abrir el marcado en vez de "activar" nada
+      this.perspOpen();
+      return;
+    }
+    state.perspectiveOn = mode === 'plano';
+    controls.setMeasUI(mode);
+  },
+
+  perspOpen(){
+    if (!video.videoWidth){
+      alert('Primero iniciá la cámara, después marcá el plano.');
+      return;
+    }
+    if (state.calibMode) exitCalib();
+    state.perspMode = true;
+    controls.setPerspPanelVisible(true);
+    updatePerspPreview();
+    if (!state.running) drawFrame(null, null);
+  },
+
+  perspApply(){
+    const calc = computePersp();
+    if (!calc){
+      readout.perspInfo('Ajustá las 4 esquinas: no forman un rectángulo válido.');
+      return;
+    }
+    state.perspective = calc;
+    state.perspectiveOn = true;
+    controls.setMeasUI('plano');
+    readout.perspStatusLabel(`plano ${calc.widthM}×${calc.lengthM} m`);
+    exitPersp();
+  },
+
+  perspCancel(){ exitPersp(); },
+  perspDimsInput(){ updatePerspPreview(); },
 });
 
 // ---------- Arranque ----------

@@ -31,6 +31,8 @@ export function calibInfo(txt){ $('calibInfo').textContent = txt; }
 export function scenarioLabel(txt){ $('scenarioLabel').textContent = txt; }
 export function scenarioHint(txt){ $('scenarioHint').textContent = txt; }
 export function blobInfo(txt){ $('blobInfo').textContent = txt; }
+export function perspInfo(txt){ $('perspInfo').textContent = txt; }
+export function perspStatusLabel(txt){ $('perspStatusLabel').textContent = txt; }
 
 export function resetMeasurements(){
   $('max').textContent = '—';

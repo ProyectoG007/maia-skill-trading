@@ -124,7 +124,7 @@ cambiar comportamiento.
 - **Aceptación:** con dos objetos cruzando a la vez, el seleccionado se mide
   bien y el otro no contamina.
 
-### Fase 3 — Homografía (precisión vehicular real)
+### Fase 3 — Homografía (precisión vehicular real) ✅ **hecha**
 El salto de "aproximado" a "confiable" cuando la cámara no está perpendicular.
 - **Core (`homography.js`):** resolver la homografía 4-puntos (DLT 8×8 con
   eliminación gaussiana — sin librerías); `apply(H, punto)` e inversa; los

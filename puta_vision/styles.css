@@ -40,6 +40,7 @@ video{width:100%;display:block}
 #ptCount{font-size:10px;color:var(--muted);letter-spacing:.08em}
 #scenarioLabel{font-size:10px;color:var(--muted);letter-spacing:.08em}
 #blobInfo{font-size:10px;color:var(--muted);letter-spacing:.08em}
+#perspStatusLabel{font-size:10px;color:var(--muted);letter-spacing:.08em}
 #scenarioHint{margin-top:6px;margin-bottom:0}
 
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:8px}
@@ -65,6 +66,10 @@ select{background:var(--bg);border:1px solid var(--line);border-radius:6px;color
 #refCustom{max-width:90px}
 #calibInfo{font-size:11px;color:var(--cyan);margin-top:6px}
 #calCancel{flex:0 0 52px}
+#perspBtn{width:100%}
+#perspPanel label{margin-top:10px}
+#perspPanel .calRow span{font-size:10px;color:var(--muted);flex:none}
+#perspInfo{font-size:11px;color:var(--cyan);margin-top:6px}
 
 .btns{display:flex;gap:8px;margin-top:10px}
 button{
