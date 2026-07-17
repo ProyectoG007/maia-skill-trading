@@ -139,6 +139,30 @@ líneas multiplicada por ese valor (se muestra en vivo bajo el campo de calibrac
 Para que sea válida, la cámara tiene que estar **fija** y el movimiento ocurrir
 aproximadamente **a la distancia calibrada y perpendicular a la cámara**.
 
+### Multi-objeto: elegir qué medir
+
+Antes, todos los píxeles en movimiento se promediaban en un único centroide:
+con dos autos cruzando a la vez, el radar terminaba midiendo un punto
+fantasma entre ambos. Ahora:
+
+1. Cada frame, `segmentBlobs` separa los píxeles en movimiento en
+   componentes conexas (BFS 4-conexo) y descarta las menores al umbral de
+   área mínima del escenario activo (mismo filtro que antes, ahora por
+   objeto en vez de global).
+2. `BlobTracker` les asigna una identidad estable entre frames por cercanía
+   de centroide (matching voraz). Si un objeto desaparece, su id se pierde:
+   algo que reaparece después en el mismo lugar es un objeto nuevo para el
+   sistema, no un "fantasma" reconectado.
+3. Todos los objetos detectados se dibujan como recuadros cian sobre el
+   video. Sin elegir nada, el radar mide automáticamente el más grande.
+   **Tocá un recuadro** para elegir ese objeto en cambio — se pone ámbar y
+   el radar lo sigue por su id mientras siga vivo, ignorando a los demás
+   (incluso si aparece uno más grande después). Si el elegido desaparece,
+   vuelve a elegir automáticamente el más grande.
+4. Tanto DIFF como FLOW ahora operan **dentro del recuadro del objeto
+   elegido**, no sobre toda el área en movimiento del frame — así que FLOW
+   ya no mezcla puntos de dos objetos distintos cuando hay más de uno.
+
 ### Escenario MESA / CALLE
 
 Toggle arriba del video (debajo de DIFF/FLOW). Cambia tres cosas a la vez para
@@ -234,6 +258,7 @@ puta_vision/
 │   │   ├── crossing.js     ← máquina de estados A→B + interpolación de cruce
 │   │   ├── calibration.js  ← escala px→unidades, presets, conversiones
 │   │   ├── flow.js         ← Lucas-Kanade: corners, tracking, resiembra
+│   │   ├── blobs.js        ← segmentación multi-objeto + tracking por id
 │   │   └── diff.js         ← diferencia de frames, centroide, mancha brillante
 │   ├── ui/
 │   │   ├── camera.js       ← getUserMedia + buffer de proceso
@@ -252,7 +277,7 @@ Regla de arquitectura: `core/` nunca importa de `ui/`.
 ### Tests
 
 ```
-cd puta_vision && npm test          # 27 tests de los módulos core
+cd puta_vision && npm test          # 40 tests de los módulos core
 ```
 
 Para desplegar alcanza con servir la carpeta por HTTPS (Vercel, Netlify,

@@ -33,6 +33,10 @@
   <span id="scenarioLabel">objeto chico, cerca</span>
 </div>
 
+<div class="trackBar">
+  <span id="blobInfo">— objetos detectados</span>
+</div>
+
 <div class="readout">
   <div class="lbl">VELOCIDAD DE CRUCE A → B</div>
   <div><span id="roiSpeed">—</span><span id="roiUnit">cm/s</span></div>
@@ -89,6 +93,9 @@
   <b>FLOW</b> sigue puntos de textura del objeto en vez de un centroide de píxeles —
   más estable con luz cambiante o fondos con dibujos. Si el objeto es liso y sin
   textura, probá <b>DIFF</b>.
+  Con varios objetos moviéndose a la vez, el radar elige el más grande por
+  defecto — <b>tocá un recuadro cian</b> sobre el video para medir ese en
+  cambio; se pone ámbar mientras es el elegido.
 </p>
 
 <script type="module" src="src/main.js"></script>

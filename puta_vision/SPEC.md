@@ -115,7 +115,7 @@ cambiar comportamiento.
 - **Aceptación:** medir un auto real con calibración por ancho de carril y
   obtener lecturas repetibles (±10 % entre pasadas a velocidad similar).
 
-### Fase 2 — Multi-objeto (blobs)
+### Fase 2 — Multi-objeto (blobs) ✅ **hecha**
 - **Core (`blobs.js`):** segmentar la máscara de movimiento en componentes
   conexas; devolver lista `{bbox, centroide, área}`; asociación frame a frame
   por solapamiento/cercanía (IDs estables); filtro por área mínima/máxima.

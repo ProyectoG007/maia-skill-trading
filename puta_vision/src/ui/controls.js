@@ -5,10 +5,13 @@
 const $ = id => document.getElementById(id);
 
 // state: {lineA, lineB, calibMode, calP1, calP2} (leído en vivo del llamador)
-// on: {linesChanged, calibChanged, dragEnd}
+// on: {linesChanged, calibChanged, dragEnd, blobTap?}
+// blobTap(fx, fy) se dispara con un toque que no arrastró ninguna línea ni la
+// barra de calibración — se interpreta como "elegí este objeto para medir".
 export function setupPointerDrag(wrap, state, on){
   let dragging = null;  // 'A' | 'B'
   let calDrag = null;   // referencia a calP1/calP2
+  let tap = null;       // {fx, fy} de un pointerdown que podría ser un toque
 
   wrap.addEventListener('pointerdown', e => {
     const r = wrap.getBoundingClientRect();
@@ -27,6 +30,8 @@ export function setupPointerDrag(wrap, state, on){
     if (Math.min(dA, dB) < 0.12){
       dragging = dA < dB ? 'A' : 'B';
       wrap.setPointerCapture(e.pointerId);
+    } else if (on.blobTap){
+      tap = { fx, fy };
     }
   });
 
@@ -38,15 +43,23 @@ export function setupPointerDrag(wrap, state, on){
       on.calibChanged();
       return;
     }
-    if (!dragging) return;
-    const fx = Math.min(0.95, Math.max(0.05, (e.clientX - r.left) / r.width));
-    if (dragging === 'A') state.lineA = fx; else state.lineB = fx;
-    on.linesChanged();
+    if (dragging){
+      const fx = Math.min(0.95, Math.max(0.05, (e.clientX - r.left) / r.width));
+      if (dragging === 'A') state.lineA = fx; else state.lineB = fx;
+      on.linesChanged();
+      return;
+    }
+    if (tap){
+      const r2 = wrap.getBoundingClientRect();
+      const fx = (e.clientX - r2.left) / r2.width, fy = (e.clientY - r2.top) / r2.height;
+      if (Math.hypot(fx - tap.fx, fy - tap.fy) > 0.02) tap = null; // se movió: no es un toque
+    }
   });
 
   wrap.addEventListener('pointerup', () => {
     if (calDrag){ calDrag = null; return; }
-    if (dragging){ dragging = null; on.dragEnd(); }
+    if (dragging){ dragging = null; on.dragEnd(); return; }
+    if (tap){ on.blobTap(tap.fx, tap.fy); tap = null; }
   });
 }
 

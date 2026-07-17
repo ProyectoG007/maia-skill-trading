@@ -39,6 +39,7 @@ video{width:100%;display:block}
 .seg button.active{background:var(--cyan);color:#0a1f1c;font-weight:700}
 #ptCount{font-size:10px;color:var(--muted);letter-spacing:.08em}
 #scenarioLabel{font-size:10px;color:var(--muted);letter-spacing:.08em}
+#blobInfo{font-size:10px;color:var(--muted);letter-spacing:.08em}
 #scenarioHint{margin-top:6px;margin-bottom:0}
 
 .grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:8px}

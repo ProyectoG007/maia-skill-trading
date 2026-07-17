@@ -37,6 +37,21 @@ export function drawCalibBar(ctx, w, h, p1, p2, label){
   ctx.fillText(label, (x1+x2)/2 - ctx.measureText(label).width/2, Math.min(y1,y2) - 12);
 }
 
+// Recuadros de todos los objetos en movimiento detectados este frame; el
+// seleccionado (measuredId) se resalta en ámbar y grosor mayor, el resto en
+// cian tenue — así se ve qué se está midiendo y qué se está ignorando.
+export function drawBlobs(ctx, w, h, blobs, selectedId, procW, procH){
+  for (const b of blobs){
+    const selected = b.id === selectedId;
+    const x = b.bbox.minX/procW*w, y = b.bbox.minY/procH*h;
+    const bw = (b.bbox.maxX - b.bbox.minX + 1)/procW*w;
+    const bh = (b.bbox.maxY - b.bbox.minY + 1)/procH*h;
+    ctx.strokeStyle = selected ? 'rgba(255,180,84,.9)' : 'rgba(95,212,196,.5)';
+    ctx.lineWidth = selected ? 2.5 : 1.5;
+    ctx.strokeRect(x, y, bw, bh);
+  }
+}
+
 export function drawFlowPoints(ctx, w, h, points, procW, procH){
   ctx.fillStyle = 'rgba(95,212,196,.8)';
   for (const p of points){

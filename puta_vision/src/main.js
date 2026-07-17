@@ -1,13 +1,14 @@
 // Wiring de la app: junta los módulos core (lógica pura) con la capa UI.
 // Todo el estado mutable de la aplicación vive acá.
 
-import { toGray, frameDiff, largestBrightRegion } from './core/diff.js';
+import { toGray, largestBrightRegion } from './core/diff.js';
 import { CrossingTracker } from './core/crossing.js';
 import {
   segmentLengthFrac, fieldWidthFromReference, roiDistance,
-  crossSpeed, pxPerSecToReal, SCENARIOS, minPixelsForArea, recommendedRoiSpanM,
+  crossSpeed, pxPerSecToReal, SCENARIOS, recommendedRoiSpanM,
 } from './core/calibration.js';
 import { FlowTracker } from './core/flow.js';
+import { segmentBlobs, BlobTracker } from './core/blobs.js';
 import { W, openCamera, createProcessor } from './ui/camera.js';
 import * as overlay from './ui/overlay.js';
 import * as readout from './ui/readout.js';
@@ -23,6 +24,7 @@ const cctx = chart.getContext('2d');
 
 const cam = createProcessor();
 const crossing = new CrossingTracker();
+const blobTracker = new BlobTracker();
 let flow = new FlowTracker(W, cam.H);
 
 const state = {
@@ -39,6 +41,8 @@ const state = {
   prev: null, grayPrev: null,
   prevCx: null, prevCy: null, prevT: null,
   lostT: null,
+  selectedBlobId: null,     // null = elegir automáticamente el más grande
+  lastBlobs: [],            // para dibujar todos los recuadros detectados
 };
 
 const fov = () => parseFloat($('fov').value) || 50;
@@ -72,6 +76,9 @@ function drawFrame(cx, cy){
     return;
   }
   overlay.drawLines(octx, w, h, state.lineA, state.lineB, crossing.state === 'timing');
+  if (state.lastBlobs.length > 1){
+    overlay.drawBlobs(octx, w, h, state.lastBlobs, state.selectedBlobId, W, cam.H);
+  }
   if (state.trackMode === 'flow' && flow.points.length){
     overlay.drawFlowPoints(octx, w, h, flow.points, W, cam.H);
   }
@@ -118,16 +125,27 @@ function loop(){
   let cx = null, cy = null;
 
   if (state.prev && state.prev.length === frame.length){
-    const d = frameDiff(frame, state.prev, W, cam.H);
-    const minPix = minPixelsForArea(SCENARIOS[state.scenario].minAreaFrac, W, cam.H);
+    const blobs = segmentBlobs(frame, state.prev, W, cam.H, {
+      minAreaFrac: SCENARIOS[state.scenario].minAreaFrac,
+    });
+    const tracked = blobTracker.update(blobs);
+    state.lastBlobs = tracked;
+    readout.blobInfo(tracked.length + (tracked.length === 1 ? ' objeto detectado' : ' objetos detectados'));
 
-    if (d.n > minPix){
+    // el elegido a mano si sigue vivo; si no, el más grande (auto)
+    let target = state.selectedBlobId !== null ? blobTracker.get(state.selectedBlobId) : null;
+    if (!target){
+      target = blobTracker.largest();
+      state.selectedBlobId = target ? target.id : null;
+    }
+
+    if (target){
       state.lostT = null;
-      cx = d.cx; cy = d.cy; // centroide de diferencia de frames (respaldo)
+      cx = target.cx; cy = target.cy; // centroide del blob elegido (respaldo)
 
       let flowPxPerSec = null;
       if (state.trackMode === 'flow' && state.grayPrev){
-        flow.update(state.grayPrev, gray, d.bbox);
+        flow.update(state.grayPrev, gray, target.bbox);
         const m = flow.mean();
         if (m){
           cx = m.cx; cy = m.cy; // promedio de puntos seguidos: más estable
@@ -211,6 +229,10 @@ controls.setupPointerDrag(wrap, state, {
   linesChanged(){ updateRoiDist(); if (!state.running) drawFrame(null, null); },
   calibChanged(){ updateCalibInfo(); if (!state.running) drawFrame(null, null); },
   dragEnd(){ resetCross(); },
+  blobTap(fx, fy){
+    if (state.calibMode) return;
+    state.selectedBlobId = blobTracker.hitTest(fx, fy, W, cam.H);
+  },
 });
 
 controls.setupButtons({
@@ -229,6 +251,9 @@ controls.setupButtons({
       state.prev = null; state.grayPrev = null;
       state.prevCx = null; state.prevT = null;
       flow.clear();
+      blobTracker.reset();
+      state.selectedBlobId = null;
+      state.lastBlobs = [];
       resetCross();
       controls.setStartButton(true);
       readout.status('● MIDIENDO', true);
