@@ -157,6 +157,22 @@ def get_scheduler_status() -> dict:
 
 
 @mcp.tool()
+def start_scheduler() -> dict:
+    """ARRANCA el loop de trading (el 'corazón' que analiza el mercado cada N
+    segundos y, en demo, registra decisiones). Equivale a 'run_project' del
+    video. Idempotente: si ya corre, no hace nada."""
+    return _post("/api/scheduler/start", {})
+
+
+@mcp.tool()
+def stop_scheduler() -> dict:
+    """PARA por completo el loop de trading (deja de analizar y operar) — freno
+    de mano total, más fuerte que el emergency_brake. Equivale a 'stop_project'.
+    Idempotente: si ya está parado, no hace nada."""
+    return _post("/api/scheduler/stop", {})
+
+
+@mcp.tool()
 def get_risk() -> dict:
     """Estado de riesgo / cumplimiento FTMO (drawdown diario y total, límites)."""
     return _get("/api/risk")

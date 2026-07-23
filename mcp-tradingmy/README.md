@@ -21,6 +21,8 @@ Claude  ──(MCP)──►  server.py  ──(HTTP)──►  API TradingMY (:
 | `get_analytics` | Analítica agregada (equity, por símbolo/estrategia) | `GET /api/analytics` |
 | `list_decisions` | Últimas decisiones del agente + razonamiento | `GET /api/decisions` |
 | `get_scheduler_status` | ¿Corriendo? intervalo, jobs | `GET /api/scheduler-status` |
+| `start_scheduler` | **Arranca** el loop de trading entero | `POST /api/scheduler/start` |
+| `stop_scheduler` | **Para** el loop de trading entero (freno total) | `POST /api/scheduler/stop` |
 | `get_risk` | Riesgo / cumplimiento FTMO | `GET /api/risk` |
 | `get_overview` | Balance, PnL, posiciones | `GET /api/overview` |
 | `get_live_strategy` | Mapa símbolo→estrategia en vivo | `GET /api/live-strategy` |
@@ -91,6 +93,7 @@ Con la API arriba, preguntale a Claude cosas como:
 - *"¿Está corriendo el scheduler?"*
 - *"Activá london_breakout en vivo para GBPUSD"* → `set_live_strategy`
 - *"Pará la estrategia en vivo de EURUSD"* → `stop_live_strategy`
+- *"Pará todo el sistema"* → `stop_scheduler` · *"Volvé a arrancarlo"* → `start_scheduler`
 
 ## Diferencia honesta con StrategyQuant X
 
