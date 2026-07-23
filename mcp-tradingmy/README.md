@@ -28,6 +28,12 @@ Claude  ──(MCP)──►  server.py  ──(HTTP)──►  API TradingMY (:
 | `get_live_strategy` | Mapa símbolo→estrategia en vivo | `GET /api/live-strategy` |
 | `set_live_strategy` | **Activa** una estrategia en vivo (demo) | `PUT /api/live-strategy` |
 | `stop_live_strategy` | **Para** la estrategia en vivo de un símbolo | `PUT /api/live-strategy` |
+| `get_control` / `set_control` | Control de riesgo: régimen, freno de emergencia, máx. shots | `GET/PUT /api/config/override` |
+| `list_open_positions` | Posiciones abiertas ahora | `GET /api/positions` |
+| `get_history` | Historial de operaciones cerradas (PnL, win rate, FTMO) | `GET /api/history` |
+| `close_position` | **Cierra** una operación abierta (escritura) | `POST /api/positions/{id}/close` |
+| `modify_position` | Mueve **SL/TP** de una operación abierta (escritura) | `PUT /api/positions/{id}/modify` |
+| `get_daily_instructions` / `set_daily_instructions` | Límites del día (máx trades, símbolos, sesiones) que el scheduler **cumple** | `GET/PUT /api/instructions` |
 | `health` | ¿La API responde? (diagnóstico) | `GET /health` |
 
 > **Solo-lectura vs. escritura:** las primeras herramientas solo consultan.
@@ -94,6 +100,10 @@ Con la API arriba, preguntale a Claude cosas como:
 - *"Activá london_breakout en vivo para GBPUSD"* → `set_live_strategy`
 - *"Pará la estrategia en vivo de EURUSD"* → `stop_live_strategy`
 - *"Pará todo el sistema"* → `stop_scheduler` · *"Volvé a arrancarlo"* → `start_scheduler`
+- *"Poné el sistema en modo conservador y activá el freno"* → `set_control`
+- *"¿Qué tengo abierto?"* → `list_open_positions` · *"Cerrá la #1234"* → `close_position`
+- *"Movale el SL de la #1234 a 1.0850"* → `modify_position`
+- *"Hoy máximo 3 trades y solo EURUSD"* → `set_daily_instructions`
 
 ## Diferencia honesta con StrategyQuant X
 

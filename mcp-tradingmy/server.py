@@ -58,9 +58,9 @@ def _get(path: str, params: dict | None = None) -> Any:
                 "hint": "¿Está corriendo el backend en ese puerto? (uvicorn main:app --port 8000)"}
 
 
-def _post(path: str, payload: dict) -> Any:
+def _post(path: str, payload: dict, params: dict | None = None) -> Any:
     """POST a la API de TradingMY. Devuelve JSON o un dict de error legible."""
-    return _send("POST", path, payload)
+    return _send("POST", path, payload, params)
 
 
 def _put(path: str, payload: dict) -> Any:
@@ -68,10 +68,10 @@ def _put(path: str, payload: dict) -> Any:
     return _send("PUT", path, payload)
 
 
-def _send(method: str, path: str, payload: dict) -> Any:
+def _send(method: str, path: str, payload: dict, params: dict | None = None) -> Any:
     try:
         with httpx.Client(timeout=TIMEOUT) as c:
-            r = c.request(method, f"{API_URL}{path}", json=payload)
+            r = c.request(method, f"{API_URL}{path}", json=payload, params=params)
             r.raise_for_status()
             return r.json()
     except httpx.HTTPStatusError as e:
@@ -176,6 +176,113 @@ def stop_scheduler() -> dict:
 def get_risk() -> dict:
     """Estado de riesgo / cumplimiento FTMO (drawdown diario y total, límites)."""
     return _get("/api/risk")
+
+
+# ── Control de riesgo por chat (ConfigOverride) ──────────────────────────────
+VALID_REGIMES = {"auto", "conservative", "normal", "aggressive"}
+
+
+@mcp.tool()
+def get_control() -> dict:
+    """Muestra el control dual activo: régimen, freno de emergencia y máx. de
+    operaciones simultáneas."""
+    return _get("/api/config/override")
+
+
+@mcp.tool()
+def set_control(regime: str | None = None, emergency_brake: bool | None = None,
+                max_shots: int | None = None) -> dict:
+    """Cambia el control de riesgo (el scheduler lo respeta en cada tick).
+
+    Args:
+        regime: auto | conservative | normal | aggressive (opcional).
+        emergency_brake: True bloquea abrir nuevas posiciones; False lo saca.
+        max_shots: máximo de operaciones simultáneas (1..10).
+
+    Manda solo lo que quieras cambiar; el resto queda igual.
+    """
+    if regime is not None and regime not in VALID_REGIMES:
+        return {"error": f"regime inválido '{regime}'", "valid": sorted(VALID_REGIMES)}
+    payload: dict[str, Any] = {}
+    if regime is not None:
+        payload["regime"] = regime
+    if emergency_brake is not None:
+        payload["emergency_brake"] = emergency_brake
+    if max_shots is not None:
+        payload["max_shots"] = max_shots
+    if not payload:
+        return {"error": "No mandaste nada que cambiar",
+                "hint": "usá regime, emergency_brake y/o max_shots"}
+    return _put("/api/config/override", payload)
+
+
+# ── Posiciones abiertas + historial ──────────────────────────────────────────
+@mcp.tool()
+def list_open_positions() -> dict:
+    """Lista las posiciones abiertas ahora (order_id, símbolo, dirección, SL/TP,
+    volumen). Usá el order_id para cerrar o modificar."""
+    return _get("/api/positions")
+
+
+@mcp.tool()
+def get_history(month: str | None = None) -> dict:
+    """Historial de operaciones cerradas (PnL, win rate, profit factor, FTMO).
+
+    Args:
+        month: 'YYYY-MM' para filtrar un mes; omitir para el mes actual.
+    """
+    return _get("/api/history", {"month": month} if month else None)
+
+
+# ── Cerrar / modificar una operación abierta (ESCRITURA) ─────────────────────
+@mcp.tool()
+def close_position(order_id: int, volume: float = 0.0) -> dict:
+    """CIERRA una posición abierta por su order_id (0 = cerrar el total).
+    Escritura real sobre el broker (demo o real). Pedí confirmación al usuario
+    antes de cerrar si hay dudas."""
+    params = {"volume": volume} if volume > 0 else None
+    return _post(f"/api/positions/{order_id}/close", {}, params)
+
+
+@mcp.tool()
+def modify_position(order_id: int, sl: float = 0.0, tp: float = 0.0) -> dict:
+    """Mueve el SL y/o TP de una posición abierta (0 = no tocar ese campo).
+    Escritura real sobre el broker."""
+    return _put(f"/api/positions/{order_id}/modify", {"sl": sl, "tp": tp})
+
+
+# ── Instrucciones diarias (el scheduler las hace cumplir) ────────────────────
+@mcp.tool()
+def get_daily_instructions() -> dict:
+    """Instrucciones activas de hoy: máx trades, símbolos y sesiones permitidos."""
+    return _get("/api/instructions")
+
+
+@mcp.tool()
+def set_daily_instructions(max_trades: int | None = None,
+                           allowed_symbols: str | None = None,
+                           allowed_sessions: str | None = None,
+                           regime: str | None = None,
+                           notes: str | None = None) -> dict:
+    """Fija los límites del día. El scheduler los CUMPLE en el loop: bloquea
+    símbolos fuera de la lista, corta al llegar a max_trades, filtra sesiones.
+
+    Args:
+        max_trades: tope de operaciones del día (0..100).
+        allowed_symbols: CSV, ej. 'EURUSD=X,GBPUSD=X' (solo esos operan).
+        allowed_sessions: CSV, ej. 'london,ny'.
+        regime: auto | conservative | normal | aggressive.
+        notes: nota libre.
+    """
+    payload: dict[str, Any] = {}
+    for k, v in (("max_trades", max_trades), ("allowed_symbols", allowed_symbols),
+                 ("allowed_sessions", allowed_sessions), ("regime", regime),
+                 ("notes", notes)):
+        if v is not None:
+            payload[k] = v
+    if not payload:
+        return {"error": "No mandaste ninguna instrucción"}
+    return _put("/api/instructions", payload)
 
 
 @mcp.tool()
