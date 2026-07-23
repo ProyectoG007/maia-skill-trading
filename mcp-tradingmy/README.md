@@ -23,7 +23,17 @@ Claude  ──(MCP)──►  server.py  ──(HTTP)──►  API TradingMY (:
 | `get_scheduler_status` | ¿Corriendo? intervalo, jobs | `GET /api/scheduler-status` |
 | `get_risk` | Riesgo / cumplimiento FTMO | `GET /api/risk` |
 | `get_overview` | Balance, PnL, posiciones | `GET /api/overview` |
+| `get_live_strategy` | Mapa símbolo→estrategia en vivo | `GET /api/live-strategy` |
+| `set_live_strategy` | **Activa** una estrategia en vivo (demo) | `PUT /api/live-strategy` |
+| `stop_live_strategy` | **Para** la estrategia en vivo de un símbolo | `PUT /api/live-strategy` |
 | `health` | ¿La API responde? (diagnóstico) | `GET /health` |
+
+> **Solo-lectura vs. escritura:** las primeras herramientas solo consultan.
+> `set_live_strategy` / `stop_live_strategy` **cambian el comportamiento en vivo**
+> del scheduler (en modo demo). El cambio es **en memoria, efecto inmediato**; un
+> reinicio del scheduler vuelve a `config.yaml` (no se pisa tu config con comentarios).
+> Hoy solo `london_breakout` tiene implementación en vivo real; otras estrategias
+> caen al agente por defecto (la herramienta te avisa).
 
 ## Requisitos
 
@@ -79,6 +89,8 @@ Con la API arriba, preguntale a Claude cosas como:
 - *"¿Cómo está el riesgo FTMO ahora?"*
 - *"Mostrame las últimas 10 decisiones del agente en EURUSD"*
 - *"¿Está corriendo el scheduler?"*
+- *"Activá london_breakout en vivo para GBPUSD"* → `set_live_strategy`
+- *"Pará la estrategia en vivo de EURUSD"* → `stop_live_strategy`
 
 ## Diferencia honesta con StrategyQuant X
 

@@ -60,9 +60,18 @@ def _get(path: str, params: dict | None = None) -> Any:
 
 def _post(path: str, payload: dict) -> Any:
     """POST a la API de TradingMY. Devuelve JSON o un dict de error legible."""
+    return _send("POST", path, payload)
+
+
+def _put(path: str, payload: dict) -> Any:
+    """PUT a la API de TradingMY. Devuelve JSON o un dict de error legible."""
+    return _send("PUT", path, payload)
+
+
+def _send(method: str, path: str, payload: dict) -> Any:
     try:
         with httpx.Client(timeout=TIMEOUT) as c:
-            r = c.post(f"{API_URL}{path}", json=payload)
+            r = c.request(method, f"{API_URL}{path}", json=payload)
             r.raise_for_status()
             return r.json()
     except httpx.HTTPStatusError as e:
@@ -70,7 +79,7 @@ def _post(path: str, payload: dict) -> Any:
     except httpx.RequestError as e:
         return {"error": "No pude conectar con la API de TradingMY",
                 "url": API_URL, "detail": str(e),
-                "hint": "¿Está corriendo el backend? (uvicorn main:app --port 8000)"}
+                "hint": "¿Está corriendo el backend? (uvicorn dashboard.api.main:app --port 8000)"}
 
 
 # ── Herramientas MCP ─────────────────────────────────────────────────────────
@@ -157,6 +166,38 @@ def get_risk() -> dict:
 def get_overview() -> dict:
     """Resumen general: balance, PnL, posiciones abiertas, últimas operaciones."""
     return _get("/api/overview")
+
+
+@mcp.tool()
+def get_live_strategy() -> dict:
+    """Muestra qué estrategia en vivo está asignada a cada símbolo (mapa actual
+    del scheduler, en memoria)."""
+    return _get("/api/live-strategy")
+
+
+@mcp.tool()
+def set_live_strategy(symbol: str, strategy: str) -> dict:
+    """Activa una estrategia EN VIVO para un símbolo (efecto inmediato, demo).
+
+    Args:
+        symbol: ej. 'EURUSD=X'.
+        strategy: rsi_ema | macd_bb | voter | london_breakout.
+
+    OJO: por ahora solo 'london_breakout' está implementada en vivo; las demás
+    caen al agente por defecto. El cambio es en memoria: un reinicio del
+    scheduler vuelve a config.yaml.
+    """
+    if strategy not in STRATEGIES:
+        return {"error": f"Estrategia inválida '{strategy}'",
+                "valid": sorted(STRATEGIES.keys())}
+    return _put("/api/live-strategy", {"symbol": symbol, "strategy": strategy})
+
+
+@mcp.tool()
+def stop_live_strategy(symbol: str) -> dict:
+    """Para/desactiva la estrategia en vivo de un símbolo (vuelve al
+    comportamiento por defecto del scheduler para ese símbolo)."""
+    return _put("/api/live-strategy", {"symbol": symbol, "strategy": None})
 
 
 @mcp.tool()
