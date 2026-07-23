@@ -21,8 +21,19 @@ Todo el stack está **desplegado y corriendo 24/7** en producción:
 | Dashboard Tododeia | https://tododeia-dashboard.vercel.app | ✅ publicado |
 | Base de datos | Supabase `maia-trading` (`xtjffjxzwxxqmhhvlkxd`) | ✅ esquema aplicado |
 | Estrategia London Breakout | activa en demo sobre EURUSD | ✅ registrando señales |
+| Control por chat (MCP) | `mcp-tradingmy/` (22 herramientas) | ✅ código listo y probado |
+| Control por Telegram | `TradingMY_claude/src/notifications/` (16 comandos) | ✅ código listo — falta token (P0) |
 
 **Tests:** TradingMY **236/236** · maia-skill-trading **21/21**.
+
+### Control por chat / Telegram (nuevo, 2026-07-23)
+Dos vías para pilotear TradingMY hablando, sin abrir el dashboard:
+- **MCP (`mcp-tradingmy/`)**: 22 herramientas (consultar, backtestear, activar/
+  parar estrategias, prender/apagar el motor, control de riesgo, ver/cerrar/
+  modificar posiciones, instrucciones diarias). Config + guía en su `README.md`
+  y `CLAUDE.md`. Probado de punta a punta contra la API.
+- **Telegram**: 16 comandos, ahora con paridad casi total (`/close`, `/modify`,
+  `/backtest` sumados a los de info y control). Solo falta el token (P0).
 
 **Faltan solo pasos manuales del owner** (ver P0). Nada bloquea el desarrollo.
 
@@ -39,7 +50,7 @@ Todo el stack está **desplegado y corriendo 24/7** en producción:
 - [ ] **Elegir exchange crypto** (Binance/Bybit/Kraken) — `CCXTBroker` es agnóstico (corre contra testnet de Binance por default).
 - [ ] **Definir capital inicial** para fase live (no bloquea F1-F3).
 - [ ] **VPS Windows para `MT5Broker`** — el paquete `MetaTrader5` no corre en Linux nativo (pendiente de fase live real).
-- [ ] **Bot de Telegram** (opcional, para seguimiento sin gasto de tokens) — crear bot con @BotFather + chat ID, para que un script diario mande los resúmenes al celular (Opción C acordada). Ver "Seguimiento automático" abajo.
+- [ ] **Bot de Telegram** — el código ya está completo (16 comandos: info + operar: `/close`, `/modify`, `/backtest`, `/brake`, `/regime`, `/plan`, `/activate`…). Solo falta el paso manual: crear bot con @BotFather, obtener chat ID y setear `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (en `.env` o Variables de Railway). `config.yaml` ya tiene `telegram.enabled: true`.
 
 ## P1 — Fase F1: Integración de señales
 
